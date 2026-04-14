@@ -1,0 +1,23 @@
+<IfModule mod_headers.c>
+    # FORCE headers even on errors/304s using 'always'
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Embedder-Policy "require-corp"
+    Header always set Cross-Origin-Resource-Policy "cross-origin"
+    Header always set Access-Control-Allow-Origin "*"
+    
+    # Aggressive caching
+    Header always set Cache-Control "max-age=31536000, public, immutable"
+</IfModule>
+
+# Ensure correct MIME types for browsers to execute scripts/wasm
+<IfModule mod_mime.c>
+    AddType application/javascript .js
+    AddType application/javascript .worker.js
+    AddType application/wasm .wasm
+</IfModule>
+
+# Disable GZIP for WASM as it can sometimes corrupt the binary if not handled well by shared hosts
+# (WASM is already compressed)
+<IfModule mod_deflate.c>
+    SetEnvIfNoCase Request_URI \.wasm$ no-gzip dont-vary
+</IfModule>

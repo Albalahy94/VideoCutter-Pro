@@ -1,0 +1,62 @@
+<?php
+
+use App\Http\Controllers\ProfileController;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+
+Route::get('/', function () {
+    return Inertia::render('Welcome', [
+        'canLogin' => Route::has('login'),
+        'canRegister' => Route::has('register'),
+        'laravelVersion' => Application::VERSION,
+        'phpVersion' => PHP_VERSION,
+    ]);
+});
+
+Route::get('/editor', function () {
+    return Inertia::render('Editor');
+})->name('editor');
+
+// Analytics & Feedback
+Route::post('/api/analytics', [App\Http\Controllers\AnalyticsController::class, 'log']);
+Route::get('/api/usage/status', [App\Http\Controllers\FeedbackController::class, 'checkStatus']);
+Route::post('/api/usage/increment', [App\Http\Controllers\FeedbackController::class, 'increment']);
+Route::post('/api/usage/feedback', [App\Http\Controllers\FeedbackController::class, 'store']);
+
+// Socialite - Google Login
+Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');
+Route::get('/auth/google/callback', [App\Http\Controllers\Auth\SocialiteController::class, 'callback'])->name('google.callback');
+
+Route::get('/dashboard', function () {
+    return Inertia::render('Dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+// FFmpeg Asset Proxy - Solves MIME type and COEP/CORP issues on local/hosting
+Route::get('/ffmpeg-proxy/{type}/{file}', function ($type, $file) {
+    $path = public_path("ffmpeg-assets/{$type}/{$file}");
+    if (!file_exists($path)) {
+        return response()->json(['error' => 'Asset not found', 'path' => $path], 404);
+    }
+    
+    $mime = str_ends_with($file, '.js') ? 'application/javascript' : 
+           (str_ends_with($file, '.wasm') ? 'application/wasm' : 'application/octet-stream');
+    
+    // Force raw content delivery to guarantee MIME types bypass server overrides
+    return response(file_get_contents($path), 200, [
+        'Content-Type' => $mime,
+        'Access-Control-Allow-Origin' => '*',
+        'Cross-Origin-Resource-Policy' => 'cross-origin',
+        'Cross-Origin-Embedder-Policy' => 'require-corp',
+        'Cache-Control' => 'public, max-age=31536000'
+    ]);
+});
+
+require __DIR__.'/auth.php';
+

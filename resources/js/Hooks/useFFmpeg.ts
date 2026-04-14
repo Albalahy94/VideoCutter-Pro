@@ -1,0 +1,142 @@
+import { useState, useCallback, useRef } from 'react'
+import { processVideo, getFFmpeg, resetFFmpeg } from '../Lib/ffmpeg-utils'
+import type { Segment, ProcessingMode, LogEntry, AspectRatio, TransitionType } from '../types'
+import { useLanguage } from './useLanguage'
+
+function makeLog(type: LogEntry['type'], message: string): LogEntry {
+  return { id: Math.random().toString(36).slice(2), type, message, timestamp: Date.now() }
+}
+
+export function useFFmpeg() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [step, setStep] = useState('')
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const { isRtl } = useLanguage()
+  const abortRef = useRef(false)
+
+  const addLog = useCallback((type: LogEntry['type'], message: string) => {
+    setLogs(prev => [...prev.slice(-99), makeLog(type, message)])
+  }, [])
+
+  const loadFFmpeg = useCallback(async () => {
+    if (isLoaded || isLoading) return
+    setIsLoading(true)
+    addLog('info', isRtl ? 'جاري تحميل FFmpeg (قد يستغرق أول مرة لحظات)...' : 'Loading FFmpeg.wasm (first load may take a moment)...')
+    try {
+      await getFFmpeg(
+        (msg) => {
+          if (msg.toLowerCase().includes('error')) {
+            addLog('error', msg)
+          }
+        },
+        (pct) => {
+          setProgress(Math.round(pct));
+          setStep(isRtl ? `جاري التحميل... ${Math.round(pct)}%` : `Loading... ${Math.round(pct)}%`);
+        }
+      )
+      setIsLoaded(true)
+      setProgress(100)
+      addLog('ok', isRtl ? 'المحرك جاهز!' : 'FFmpeg ready!')
+    } catch (err) {
+      addLog('error', `Failed to load FFmpeg: ${err}`)
+      resetFFmpeg()
+    } finally {
+      setIsLoading(false)
+    }
+  }, [isLoaded, isLoading, addLog, isRtl])
+
+  const process = useCallback(async (
+    file: File,
+    segments: Segment[],
+    mode: ProcessingMode,
+    aspectRatio: AspectRatio,
+    transition: TransitionType,
+    totalDuration: number,
+  ) => {
+    if (isProcessing) return
+    abortRef.current = false
+
+    setIsProcessing(true)
+    setProgress(0)
+    setStep(isRtl ? 'جاري البدء...' : 'Starting...')
+    setLogs([])
+
+    try {
+      if (!isLoaded) {
+        addLog('info', isRtl ? 'جاري تحميل المحرك...' : 'Loading FFmpeg...')
+        await getFFmpeg(
+          (msg) => {
+            if (msg.toLowerCase().includes('error')) addLog('error', msg);
+          },
+          (pct) => {
+            setProgress(Math.round(pct));
+            setStep(isRtl ? `جاري التحميل... ${Math.round(pct)}%` : `Loading... ${Math.round(pct)}%`);
+          }
+        );
+        setIsLoaded(true)
+        setProgress(100)
+        addLog('ok', isRtl ? 'المحرك جاهز!' : 'FFmpeg ready!')
+      }
+
+      await processVideo(
+        file,
+        segments,
+        mode,
+        aspectRatio,
+        transition,
+        totalDuration,
+        (stepMsg, pct) => {
+          setStep(stepMsg)
+          setProgress(pct)
+          addLog(pct === 100 ? 'ok' : 'progress', stepMsg)
+        },
+        (msg) => addLog('info', msg),
+      )
+
+      addLog('ok', isRtl ? 'اكتملت المعالجة! تم تحميل الملف.' : 'Processing complete! File downloaded.')
+    } catch (err: any) {
+      let msg = err?.message || String(err)
+      let displayMsg = msg
+
+      if (msg === 'MEMORY_LIMIT_REACHED' || msg.includes('Code=-1') || msg.includes('pthread')) {
+        displayMsg = isRtl 
+          ? 'خطأ في الذاكرة: الملف كبير جداً على متصفح الموبايل. جرب ملفاً أصغر.' 
+          : 'Memory Limit: This video is too large for mobile browser RAM. Try a smaller file.'
+      } else if (msg.startsWith('DURATION_LIMIT_EXCEEDED:')) {
+        const parts = msg.split(':')
+        const platform = parts[1]
+        const maxSec = parseInt(parts[2])
+        const segNames = parts.slice(3).join(':')
+        const platformNames: Record<string, string> = {
+          shorts: 'YouTube Shorts',
+          square: 'Instagram Reels',
+          youtube: 'YouTube',
+        }
+        const platformLabel = platformNames[platform] || platform
+        displayMsg = isRtl
+          ? `⏱️ الحد المسموح لـ ${platformLabel} هو ${maxSec} ثانية (${Math.floor(maxSec / 60)}:${String(maxSec % 60).padStart(2, '0')} دقيقة). يرجى تقصير المقطع: ${segNames}`
+          : `⏱️ ${platformLabel} max duration is ${maxSec}s (${Math.floor(maxSec / 60)}:${String(maxSec % 60).padStart(2, '0')}). Please shorten: ${segNames}`
+      }
+
+      addLog('error', `Error: ${displayMsg}`)
+      setStep(isRtl ? 'فشلت العملية: ' + displayMsg : 'Failed: ' + displayMsg)
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [isProcessing, isLoaded, addLog, isRtl])
+
+  return {
+    isLoading,
+    isLoaded,
+    isProcessing,
+    progress,
+    step,
+    logs,
+    loadFFmpeg,
+    process,
+  }
+}
+
