@@ -15,22 +15,31 @@ const ThemeContext = createContext<ThemeContextValue>({
 })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    try {
-      const stored = localStorage.getItem('vcpro_theme') as Theme | null
-      if (stored === 'light' || stored === 'dark') return stored
-    } catch {}
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
-  })
+  const [theme, setTheme] = useState<Theme>('dark')
 
   useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'light') {
-      root.classList.add('light')
-    } else {
-      root.classList.remove('light')
+    try {
+      const stored = localStorage.getItem('vcpro_theme') as Theme | null
+      if (stored === 'light' || stored === 'dark') {
+        setTheme(stored)
+      } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+        setTheme('light')
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement
+      if (theme === 'light') {
+        root.classList.add('light')
+      } else {
+        root.classList.remove('light')
+      }
     }
-    localStorage.setItem('vcpro_theme', theme)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('vcpro_theme', theme)
+    }
   }, [theme])
 
   const toggle = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'))

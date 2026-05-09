@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { processVideo, getFFmpeg, resetFFmpeg } from '../Lib/ffmpeg-utils'
-import type { Segment, ProcessingMode, LogEntry, AspectRatio, TransitionType } from '../types'
+import type { Segment, ProcessingMode, LogEntry, AspectRatio, TransitionType, ProjectFile, VisualFilter, Overlay, AudioPreset, VocalIsolationMode } from '../types'
 import { useLanguage } from './useLanguage'
 
 function makeLog(type: LogEntry['type'], message: string): LogEntry {
@@ -16,6 +16,14 @@ export function useFFmpeg() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const { isRtl } = useLanguage()
   const abortRef = useRef(false)
+
+  const playSuccessSound = useCallback(() => {
+    try {
+      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+      audio.volume = 0.5;
+      audio.play();
+    } catch (e) { console.error('Sound play failed', e); }
+  }, []);
 
   const addLog = useCallback((type: LogEntry['type'], message: string) => {
     setLogs(prev => [...prev.slice(-99), makeLog(type, message)])
@@ -40,6 +48,7 @@ export function useFFmpeg() {
       setIsLoaded(true)
       setProgress(100)
       addLog('ok', isRtl ? 'المحرك جاهز!' : 'FFmpeg ready!')
+      setTimeout(() => setProgress(0), 1500)
     } catch (err) {
       addLog('error', `Failed to load FFmpeg: ${err}`)
       resetFFmpeg()
@@ -49,12 +58,25 @@ export function useFFmpeg() {
   }, [isLoaded, isLoading, addLog, isRtl])
 
   const process = useCallback(async (
-    file: File,
+    files: ProjectFile[],
     segments: Segment[],
     mode: ProcessingMode,
     aspectRatio: AspectRatio,
     transition: TransitionType,
+    videoSpeed: number,
+    audioBoost: number,
     totalDuration: number,
+    includeSubtitles?: boolean,
+    visualFilter?: VisualFilter,
+    noiseReduction?: boolean,
+    backgroundMusic?: File | null,
+    bgMusicVolume?: number,
+    overlays?: Overlay[],
+    audioPreset?: AudioPreset,
+    vocalIsolation?: VocalIsolationMode,
+    exportResolution?: ExportResolution,
+    exportFormat?: ExportFormat,
+    exportBitrate?: ExportBitrate,
   ) => {
     if (isProcessing) return
     abortRef.current = false
@@ -82,11 +104,13 @@ export function useFFmpeg() {
       }
 
       await processVideo(
-        file,
+        files,
         segments,
         mode,
         aspectRatio,
         transition,
+        videoSpeed,
+        audioBoost,
         totalDuration,
         (stepMsg, pct) => {
           setStep(stepMsg)
@@ -94,9 +118,21 @@ export function useFFmpeg() {
           addLog(pct === 100 ? 'ok' : 'progress', stepMsg)
         },
         (msg) => addLog('info', msg),
+        includeSubtitles,
+        visualFilter,
+        noiseReduction,
+        backgroundMusic,
+        bgMusicVolume,
+        overlays,
+        audioPreset,
+        vocalIsolation,
+        exportResolution,
+        exportFormat,
+        exportBitrate
       )
 
-      addLog('ok', isRtl ? 'اكتملت المعالجة! تم تحميل الملف.' : 'Processing complete! File downloaded.')
+      playSuccessSound();
+      addLog('ok', isRtl ? '🎉 اكتملت المعالجة بنجاح! تم تحميل ملفاتك.' : '🎉 Processing complete! Your files are ready.')
     } catch (err: any) {
       let msg = err?.message || String(err)
       let displayMsg = msg
@@ -123,6 +159,7 @@ export function useFFmpeg() {
 
       addLog('error', `Error: ${displayMsg}`)
       setStep(isRtl ? 'فشلت العملية: ' + displayMsg : 'Failed: ' + displayMsg)
+      throw new Error(displayMsg)
     } finally {
       setIsProcessing(false)
     }
@@ -139,4 +176,3 @@ export function useFFmpeg() {
     process,
   }
 }
-

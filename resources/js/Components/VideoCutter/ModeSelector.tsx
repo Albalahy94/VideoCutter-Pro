@@ -48,10 +48,11 @@ const MODES: {
 interface ModeSelectorProps {
   mode: ProcessingMode
   onChange: (mode: ProcessingMode) => void
+  compact?: boolean
   disabled?: boolean
 }
 
-export function ModeSelector({ mode, onChange, disabled }: ModeSelectorProps) {
+export function ModeSelector({ mode, onChange, compact, disabled }: ModeSelectorProps) {
   const { isRtl } = useLanguage()
 
   return (
@@ -69,7 +70,8 @@ export function ModeSelector({ mode, onChange, disabled }: ModeSelectorProps) {
               onClick={() => onChange(m.id)}
               disabled={disabled}
               className={clsx(
-                'flex flex-col items-center gap-2 p-3 rounded-xl border transition-all duration-200 cursor-pointer',
+                'flex flex-col items-center gap-1.5 rounded-xl border transition-all duration-200 cursor-pointer',
+                compact ? 'p-1.5 sm:p-2' : 'p-3',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
               )}
               style={{
@@ -108,7 +110,7 @@ export function ModeSelector({ mode, onChange, disabled }: ModeSelectorProps) {
                   {isRtl ? m.labelAr : m.labelEn}
                 </div>
                 <div
-                  className="text-[11px] leading-tight mt-0.5 hidden sm:block"
+                  className={clsx("text-[11px] leading-tight mt-0.5", compact ? "hidden" : "hidden sm:block")}
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {isRtl ? m.descriptionAr : m.descriptionEn}

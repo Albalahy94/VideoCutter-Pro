@@ -1,16 +1,22 @@
-import { Scissors, LogIn, LogOut, User as UserIcon, Loader2, Sun, Moon, Languages } from 'lucide-react'
+import { Scissors, LogIn, LogOut, User as UserIcon, Loader2, Sun, Moon, Languages, Undo, Redo } from 'lucide-react'
 import { Link, router } from '@inertiajs/react'
 import { useTheme } from '../../Hooks/useTheme'
 import { useLanguage } from '../../Hooks/useLanguage'
+import { clsx } from 'clsx'
 
 interface HeaderProps {
   user: { email: string } | null
   onLoginClick: () => void
   onLogout: () => void
   isAuthLoading: boolean
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
+  onExportClick?: () => void
 }
 
-export function Header({ user, onLoginClick, onLogout, isAuthLoading }: HeaderProps) {
+export function Header({ user, onLoginClick, onLogout, isAuthLoading, onUndo, onRedo, canUndo, canRedo, onExportClick }: HeaderProps) {
   const { isDark, toggle: toggleTheme } = useTheme()
   const { isRtl, toggleLang } = useLanguage()
 
@@ -59,6 +65,39 @@ export function Header({ user, onLoginClick, onLogout, isAuthLoading }: HeaderPr
               v2.0
             </span>
           </div>
+
+          {/* Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1 ml-4 border-l border-bg-border pl-4" style={isRtl ? { borderLeft: 'none', borderRight: '1px solid var(--bg-border)', paddingLeft: 0, paddingRight: '1rem', marginLeft: 0, marginRight: '1rem' } : {}}>
+            <Link
+              href={route('blog.index')}
+              className={clsx(
+                "px-3 py-1.5 text-xs font-bold rounded-lg transition-all",
+                route().current('blog.*') ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
+              )}
+            >
+              {isRtl ? 'المدونة' : 'Blog'}
+            </Link>
+          </nav>
+        </div>
+
+        {/* Undo / Redo */}
+        <div className="flex items-center gap-1 sm:gap-2 ml-4">
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            className="p-2 rounded-lg hover:bg-bg-elevated disabled:opacity-30 transition-all text-text-secondary hover:text-accent"
+            title={isRtl ? 'تراجع' : 'Undo'}
+          >
+            <Undo className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            className="p-2 rounded-lg hover:bg-bg-elevated disabled:opacity-30 transition-all text-text-secondary hover:text-accent"
+            title={isRtl ? 'إعادة' : 'Redo'}
+          >
+            <Redo className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Tagline */}
@@ -113,19 +152,30 @@ export function Header({ user, onLoginClick, onLogout, isAuthLoading }: HeaderPr
           {isAuthLoading ? (
             <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--text-muted)' }} />
           ) : user ? (
-            <div className="flex items-center gap-0.5 sm:gap-2">
-              <div className="flex items-center gap-1.5 text-sm px-1.5 sm:px-0" style={{ color: 'var(--text-secondary)' }}>
-                <UserIcon className="w-4 h-4" />
-                <span className="hidden sm:inline max-w-[130px] truncate">{user.name || user.email}</span>
+            <div className="flex items-center gap-2 sm:gap-4">
+              {onExportClick && (
+                <button
+                  onClick={onExportClick}
+                  className="hidden sm:flex items-center gap-2 px-4 py-1.5 rounded-full font-bold text-white shadow-lg shadow-accent/20 transition-transform active:scale-95"
+                  style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-light))' }}
+                >
+                  {isRtl ? 'تصدير' : 'Export'}
+                </button>
+              )}
+              <div className="flex items-center gap-0.5 sm:gap-2 border-l border-bg-border pl-2 sm:pl-4" style={isRtl ? { borderLeft: 'none', borderRight: '1px solid var(--bg-border)', paddingLeft: 0, paddingRight: '1rem' } : {}}>
+                <div className="flex items-center gap-1.5 text-sm px-1.5 sm:px-0" style={{ color: 'var(--text-secondary)' }}>
+                  <UserIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline max-w-[130px] truncate">{user.name || user.email}</span>
+                </div>
+                <button
+                  onClick={() => router.post(route('logout'))}
+                  className="btn-ghost text-xs flex items-center gap-1.5 py-1.5 px-2 sm:px-3"
+                  title={t.signOut}
+                >
+                  <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                  <span className="hidden sm:inline">{t.signOut}</span>
+                </button>
               </div>
-              <button
-                onClick={() => router.post(route('logout'))}
-                className="btn-ghost text-xs flex items-center gap-1.5 py-1.5 px-2 sm:px-3"
-                title={t.signOut}
-              >
-                <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-                <span className="hidden sm:inline">{t.signOut}</span>
-              </button>
             </div>
           ) : (
             <Link

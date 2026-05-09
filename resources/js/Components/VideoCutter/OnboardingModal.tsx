@@ -1,4 +1,4 @@
-import { X, MousePointer2, Keyboard, PlayCircle, Scissors, FileVideo, Layout, Sparkles } from 'lucide-react'
+import { X, MousePointer2, Keyboard, PlayCircle, Scissors, Film, Layout, Sparkles, FileVideo } from 'lucide-react'
 import { useLanguage } from '../../Hooks/useLanguage'
 import { clsx } from 'clsx'
 
@@ -69,13 +69,13 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
               <h2 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-accent-light to-violet-400 bg-clip-text text-transparent">
                 {t.title}
               </h2>
-              <p className="text-white/80 text-sm md:text-base max-w-md">
+              <p className="text-text-secondary text-sm md:text-base max-w-md">
                 {t.subtitle}
               </p>
             </div>
             <button 
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-white/5 transition-colors text-white/40 hover:text-white"
+              className="p-2 rounded-full hover:bg-bg-primary transition-colors text-text-muted hover:text-text-primary"
             >
               <X className="w-6 h-6" />
             </button>
@@ -90,14 +90,14 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
               </div>
               <div className="grid gap-2">
                 {t.shortcuts.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 group hover:border-accent-light/30 transition-all">
+                  <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-bg-primary border border-bg-border group hover:border-accent-light/30 transition-all">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-bg-primary flex items-center justify-center text-white/50 group-hover:text-accent-light transition-colors">
+                      <div className="w-8 h-8 rounded-lg bg-bg-elevated flex items-center justify-center text-text-muted group-hover:text-accent-light transition-colors">
                         <s.icon className="w-4 h-4" />
                       </div>
-                      <span className="text-sm font-medium text-white">{s.desc}</span>
+                      <span className="text-sm font-medium text-text-primary">{s.desc}</span>
                     </div>
-                    <kbd className="min-w-[40px] px-2 py-1 rounded-lg bg-white text-black text-xs font-mono font-bold text-center shadow-lg">
+                    <kbd className="min-w-[40px] px-2 py-1 rounded-lg bg-text-primary text-bg-primary text-xs font-mono font-bold text-center shadow-lg">
                       {s.key}
                     </kbd>
                   </div>
@@ -114,12 +114,12 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
               <div className="grid gap-4">
                 {t.tips.map((tip, i) => (
                   <div key={i} className="flex gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-white/10 to-transparent border border-white/10 flex items-center justify-center text-white">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-bg-primary border border-bg-border flex items-center justify-center text-text-primary">
                       <tip.icon className="w-5 h-5" />
                     </div>
                     <div className="space-y-0.5">
-                      <h4 className="text-sm font-bold text-white">{tip.title}</h4>
-                      <p className="text-xs text-white/60 leading-relaxed">{tip.desc}</p>
+                      <h4 className="text-sm font-bold text-text-primary">{tip.title}</h4>
+                      <p className="text-xs text-text-secondary leading-relaxed">{tip.desc}</p>
                     </div>
                   </div>
                 ))}

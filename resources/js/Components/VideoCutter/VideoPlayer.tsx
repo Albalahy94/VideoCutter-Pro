@@ -1,7 +1,8 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
-import { Play, Pause, Volume2, VolumeX, Upload, Film } from 'lucide-react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Play, Pause, Volume2, VolumeX, Upload, Film, RotateCcw, RotateCw } from 'lucide-react'
+import { WaveformCanvas } from './WaveformCanvas'
 import { secondsToTime, formatDuration } from '../../Lib/time-utils'
-import type { Segment, ProcessingMode } from '../../types'
+import type { Segment, ProcessingMode, AspectRatio } from '../../types'
 import { useLanguage } from '../../Hooks/useLanguage'
 import { clsx } from 'clsx'
 
@@ -13,6 +14,8 @@ interface VideoPlayerProps {
   isMuted: boolean
   segments: Segment[]
   mode: ProcessingMode
+  videoSpeed: number
+  audioBoost: number
   onFileLoad: (file: File, duration: number) => void
   onTimeUpdate: (t: number) => void
   onPlay: () => void
@@ -21,6 +24,10 @@ interface VideoPlayerProps {
   onSeek: (t: number) => void
   onAdd: (start: number, end: number) => void
   videoRef: React.RefObject<HTMLVideoElement | null>
+  aspectRatio?: AspectRatio
+  showSafeZones?: boolean
+  backgroundMusic?: File | null
+  bgMusicVolume?: number
 }
 
 const modeColor: Record<ProcessingMode, string> = {
@@ -31,8 +38,11 @@ const modeColor: Record<ProcessingMode, string> = {
 
 export function VideoPlayer({
   file, currentTime, duration, isPlaying, isMuted,
-  segments, mode, onFileLoad, onTimeUpdate, onPlay, onPause,
+  segments, mode, videoSpeed, audioBoost,
+  onFileLoad, onTimeUpdate, onPlay, onPause,
   onToggleMute, onSeek, onAdd, videoRef,
+  aspectRatio, showSafeZones,
+  backgroundMusic, bgMusicVolume = 1
 }: VideoPlayerProps) {
   const progressRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -42,13 +52,136 @@ export function VideoPlayer({
   const [isDragging, setIsDragging] = useState(false)
   const { isRtl } = useLanguage()
 
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Handle Background Music Sync
+  useEffect(() => {
+    if (!backgroundMusic) {
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause();
+        bgAudioRef.current = null;
+      }
+      return;
+    }
+
+    const url = URL.createObjectURL(backgroundMusic);
+    const audio = new Audio(url);
+    audio.loop = true;
+    audio.volume = bgMusicVolume;
+    bgAudioRef.current = audio;
+
+    if (isPlaying) {
+      audio.currentTime = videoRef.current?.currentTime || 0;
+      audio.play().catch(() => {});
+    }
+
+    return () => {
+      audio.pause();
+      URL.revokeObjectURL(url);
+      bgAudioRef.current = null;
+    };
+  }, [backgroundMusic]);
+
+  // Sync Volume
+  useEffect(() => {
+    if (bgAudioRef.current) {
+      bgAudioRef.current.volume = bgMusicVolume;
+    }
+  }, [bgMusicVolume]);
+
+  // Sync Play/Pause
+  useEffect(() => {
+    if (!bgAudioRef.current) return;
+    if (isPlaying) {
+      bgAudioRef.current.currentTime = videoRef.current?.currentTime || 0;
+      bgAudioRef.current.play().catch(() => {});
+    } else {
+      bgAudioRef.current.pause();
+    }
+  }, [isPlaying]);
+
+  // Sync Seek
+  useEffect(() => {
+    if (bgAudioRef.current && videoRef.current) {
+      // Small buffer to avoid constant seeking loops
+      if (Math.abs(bgAudioRef.current.currentTime - currentTime) > 0.3) {
+        bgAudioRef.current.currentTime = currentTime;
+      }
+    }
+  }, [currentTime]);
+
   // Handle video source change
   useEffect(() => {
-    if (!videoRef.current || !file) return
+    if (!videoRef.current || !file) {
+        if (!file && videoRef.current) videoRef.current.src = "";
+        return;
+    }
     const url = URL.createObjectURL(file)
     videoRef.current.src = url
-    return () => URL.revokeObjectURL(url)
+    
+    // Reset Audio Context and state on file change
+    if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {})
+        audioCtxRef.current = null
+        gainNodeRef.current = null
+    }
+
+    // Auto-play when a new file is loaded as per user request for "automatic" flow
+    // We wait a tiny bit for the metadata to be ready
+    const timer = setTimeout(() => {
+      if (videoRef.current && file) {
+        initAudioCtx(); // Ensure audio context is ready for boost
+        videoRef.current.play().catch(err => {
+          // Auto-play might be blocked by browser policy without user gesture
+          // but since they just clicked "+" or dropped a file, it usually works.
+          console.log("Auto-play blocked or failed", err);
+        });
+      }
+    }, 300);
+
+    return () => {
+      URL.revokeObjectURL(url);
+      clearTimeout(timer);
+    }
   }, [file, videoRef])
+
+  // Apply Speed & Pitch
+  useEffect(() => {
+    if (!videoRef.current) return
+    videoRef.current.playbackRate = videoSpeed
+    if ('preservesPitch' in videoRef.current) {
+        (videoRef.current as any).preservesPitch = true
+    }
+  }, [videoSpeed, videoRef])
+
+  // Apply Gain (Boost)
+  useEffect(() => {
+    if (gainNodeRef.current) {
+        gainNodeRef.current.gain.setTargetAtTime(audioBoost, audioCtxRef.current!.currentTime, 0.01)
+    }
+  }, [audioBoost])
+
+  const initAudioCtx = useCallback(() => {
+    if (!videoRef.current || audioCtxRef.current) return
+    
+    try {
+        const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext)
+        const ctx = new AudioContextClass()
+        const source = ctx.createMediaElementSource(videoRef.current)
+        const gain = ctx.createGain()
+        
+        gain.gain.value = audioBoost
+        source.connect(gain)
+        gain.connect(ctx.destination)
+        
+        audioCtxRef.current = ctx
+        gainNodeRef.current = gain
+    } catch (err) {
+        console.error('AudioContext init failed', err)
+    }
+  }, [videoRef, audioBoost])
 
   const handleVideoLoad = useCallback(() => {
     if (!videoRef.current || !file) return
@@ -79,8 +212,10 @@ export function VideoPlayer({
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setIsDragOver(false)
-    const f = e.dataTransfer.files[0]
-    if (f) loadFile(f)
+    const files = Array.from(e.dataTransfer.files)
+    files.forEach(f => {
+      if (f.type.startsWith('video/')) loadFile(f)
+    })
   }, [loadFile])
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -91,8 +226,12 @@ export function VideoPlayer({
   const handleDragLeave = useCallback(() => setIsDragOver(false), [])
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (f) loadFile(f)
+    const selectedFiles = e.target.files
+    if (selectedFiles) {
+      Array.from(selectedFiles).forEach(f => {
+        if (f.type.startsWith('video/')) loadFile(f)
+      })
+    }
     // Reset input so same file can be reloaded
     e.target.value = ''
   }, [loadFile])
@@ -110,12 +249,12 @@ export function VideoPlayer({
   }
 
   return (
-    <div className="card flex flex-col gap-3">
+    <div className="card flex flex-col gap-3 min-w-0">
       {/* Video area */}
       <div
         className={clsx(
-          'relative rounded-xl overflow-hidden aspect-video flex items-center justify-center transition-all duration-300',
-          file ? 'bg-black cursor-default' : 'drop-zone cursor-pointer',
+          'relative rounded-xl overflow-hidden flex items-center justify-center transition-all duration-300',
+          file ? 'bg-black cursor-default max-h-[60vh] aspect-video w-full' : 'drop-zone cursor-pointer w-full',
           !file && isDragOver && 'drag-over',
         )}
         onDrop={handleDrop}
@@ -129,7 +268,6 @@ export function VideoPlayer({
               ref={videoRef as React.RefObject<HTMLVideoElement>}
               className="w-full h-full object-contain no-transition"
               muted={isMuted}
-              onLoadedMetadata={handleVideoLoad}
               onTimeUpdate={handleTimeUpdate}
               onEnded={onPause}
               onPlay={onPlay}
@@ -142,7 +280,10 @@ export function VideoPlayer({
               onClick={(e) => {
                 e.stopPropagation()
                 if (isPlaying) videoRef.current?.pause()
-                else videoRef.current?.play()
+                else {
+                    initAudioCtx()
+                    videoRef.current?.play()
+                }
               }}
             />
             {/* Play indicator flash */}
@@ -156,6 +297,26 @@ export function VideoPlayer({
                 </div>
               )}
             </div>
+            
+            {/* Safe Zones Overlay */}
+            {showSafeZones && (aspectRatio === 'shorts' || aspectRatio === 'square') && (
+              <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-4">
+                 {/* Header Safe Zone */}
+                 <div className="h-20 border-b border-dashed border-white/20 bg-black/10 flex items-start justify-center pt-2">
+                    <span className="text-[10px] text-white/40 uppercase tracking-tighter">Header Safe Zone</span>
+                 </div>
+                 
+                 {/* Sidebar/Action Safe Zone (Right for Shorts) */}
+                 {aspectRatio === 'shorts' && (
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-1/2 border-l border-dashed border-white/20 bg-black/10" />
+                 )}
+
+                 {/* Footer Safe Zone (Comments/Description) */}
+                 <div className="h-32 border-t border-dashed border-white/20 bg-black/10 flex items-end justify-center pb-2">
+                    <span className="text-[10px] text-white/40 uppercase tracking-tighter">Engagement Zone (Hidden)</span>
+                 </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex flex-col items-center gap-4 px-6 text-center">
@@ -195,6 +356,7 @@ export function VideoPlayer({
           ref={fileInputRef}
           type="file"
           accept="video/*"
+          multiple
           className="hidden"
           onChange={handleFileInput}
         />
@@ -254,7 +416,6 @@ export function VideoPlayer({
             </div>
           )}
 
-          {/* Clickable track */}
           <div
             className="h-2 bg-bg-elevated rounded-full cursor-pointer relative overflow-hidden"
             onMouseDown={(e) => {
@@ -265,6 +426,7 @@ export function VideoPlayer({
               onSeek(time)
             }}
             onTouchStart={(e) => {
+              if (e.touches[0].target === progressRef.current) e.preventDefault()
               const time = getTimeFromX(e.touches[0].clientX)
               setDragStart(time)
               setDragEnd(time)
@@ -301,13 +463,19 @@ export function VideoPlayer({
               setIsDragging(false)
             }}
           >
-            <div
-              className="h-full bg-accent rounded-full transition-none absolute top-0"
-              style={{ 
-                [isRtl ? 'right' : 'left']: 0,
-                width: `${progress}%` 
-              }}
-            />
+            {/* Visual Track (Centered) */}
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 md:h-2 bg-white/10 rounded-full overflow-hidden pointer-events-none">
+              {/* Waveform Background */}
+              <WaveformCanvas file={file} />
+              
+              <div
+                className={clsx("absolute top-0 h-full bg-accent rounded-full transition-none", isRtl ? "right-0" : "left-0")}
+                style={{ 
+                  width: `${progress}%`,
+                  zIndex: 5
+                }}
+              />
+            </div>
           </div>
 
           {/* Playhead */}
@@ -329,7 +497,11 @@ export function VideoPlayer({
             <button
               onClick={() => {
                 if (!videoRef.current) return
-                isPlaying ? videoRef.current.pause() : videoRef.current.play()
+                if (isPlaying) videoRef.current.pause()
+                else {
+                    initAudioCtx()
+                    videoRef.current.play()
+                }
               }}
               disabled={!file}
               className={clsx(
@@ -342,6 +514,26 @@ export function VideoPlayer({
             >
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
             </button>
+
+            {/* Seek Buttons */}
+            <div className="flex items-center gap-1 ml-1">
+              <button
+                onClick={() => onSeek(Math.max(0, currentTime - 5))}
+                disabled={!file}
+                className="btn-icon w-8 h-8 opacity-70 hover:opacity-100 disabled:opacity-30"
+                title="-5s"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onSeek(Math.min(duration, currentTime + 5))}
+                disabled={!file}
+                className="btn-icon w-8 h-8 opacity-70 hover:opacity-100 disabled:opacity-30"
+                title="+5s"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             {/* Mute */}
             <button

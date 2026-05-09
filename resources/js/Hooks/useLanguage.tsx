@@ -17,18 +17,27 @@ const LanguageContext = createContext<LanguageContextValue>({
 })
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Language>(() => {
-    try {
-      const stored = localStorage.getItem('vcpro_lang') as Language | null
-      if (stored === 'en' || stored === 'ar') return stored
-    } catch {}
-    return navigator.language.startsWith('ar') ? 'ar' : 'en'
-  })
+  const [lang, setLang] = useState<Language>('en')
 
   useEffect(() => {
-    document.documentElement.lang = lang
-    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
-    localStorage.setItem('vcpro_lang', lang)
+    try {
+      const stored = localStorage.getItem('vcpro_lang') as Language | null
+      if (stored === 'en' || stored === 'ar') {
+        setLang(stored)
+      } else if (navigator.language.startsWith('ar')) {
+        setLang('ar')
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = lang
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('vcpro_lang', lang)
+    }
   }, [lang])
 
   const toggleLang = () => setLang(l => (l === 'en' ? 'ar' : 'en'))

@@ -46,9 +46,9 @@ class TrackPageVisits
             // 1. OPTIMIZATION: Cache location in session
             $country = session('visitor_country');
             $city = session('visitor_city');
+            $ip = $request->ip();
             
             if (!$country && !$city) {
-                $ip = $request->ip();
                 $locationInfo = Location::get($ip);
                 $country = $locationInfo ? $locationInfo->countryName : 'Unknown';
                 $city = $locationInfo ? $locationInfo->cityName : 'Unknown';

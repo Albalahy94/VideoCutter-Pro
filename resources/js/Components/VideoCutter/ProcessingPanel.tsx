@@ -35,10 +35,12 @@ export function ProcessingPanel({
   segments, hasFile, onStart, onLoadFFmpeg,
 }: ProcessingPanelProps) {
   const { isRtl } = useLanguage()
-  const logsEndRef = useRef<HTMLDivElement>(null)
+  const logsContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+    }
   }, [logs])
 
   const canStart = hasFile && segments > 0 && !isProcessing && !isLoading
@@ -112,11 +114,13 @@ export function ProcessingPanel({
 
       {/* Log output */}
       {logs.length > 0 && (
-        <div className="bg-bg-primary border border-bg-border rounded-lg p-3 max-h-40 overflow-y-auto font-mono text-xs flex flex-col gap-0.5">
+        <div 
+          ref={logsContainerRef} 
+          className="bg-bg-primary border border-bg-border rounded-lg p-3 h-40 overflow-y-auto font-mono text-xs flex flex-col gap-0.5"
+        >
           {logs.map(log => (
             <LogLine key={log.id} log={log} />
           ))}
-          <div ref={logsEndRef} />
         </div>
       )}
     </div>

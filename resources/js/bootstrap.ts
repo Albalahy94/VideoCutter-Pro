@@ -33,8 +33,10 @@
 })();
 
 import axios from 'axios';
-window.axios = axios;
 
-window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
-window.axios.defaults.withCredentials = true;
-window.axios.defaults.withXSRFToken = true;
+if (typeof window !== 'undefined') {
+    (window as any).axios = axios;
+    (window as any).axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+    (window as any).axios.defaults.withCredentials = true;
+    (window as any).axios.defaults.withXSRFToken = true;
+}

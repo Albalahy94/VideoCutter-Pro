@@ -7,6 +7,7 @@ import { createRoot, hydrateRoot } from 'react-dom/client';
 
 import { ThemeProvider } from './Hooks/useTheme';
 import { LanguageProvider } from './Hooks/useLanguage';
+import FloatingSupport from './Components/FloatingSupport';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -18,12 +19,11 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.tsx'),
         ),
     setup({ el, App, props }) {
-        const root = createRoot(el);
-
-        root.render(
+        createRoot(el).render(
             <ThemeProvider>
                 <LanguageProvider>
                     <App {...props} />
+                    <FloatingSupport />
                 </LanguageProvider>
             </ThemeProvider>
         );

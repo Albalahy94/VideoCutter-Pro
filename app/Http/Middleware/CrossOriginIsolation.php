@@ -17,9 +17,9 @@ class CrossOriginIsolation
     {
         $response = $next($request);
 
-        // Required for SharedArrayBuffer and multithreaded FFmpeg.wasm
-        $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
-        $response->headers->set('Cross-Origin-Embedder-Policy', 'require-corp');
+        // Disabled to allow Google Drive and other third-party integrations
+        // $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+        // $response->headers->set('Cross-Origin-Embedder-Policy', 'credentialless');
 
         return $response;
     }

@@ -1,16 +1,22 @@
 <?php
 
+use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
+    $posts = \App\Models\Post::where('is_published', true)
+        ->orderBy('published_at', 'desc')
+        ->limit(6)
+        ->get();
+
     return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
+        'posts' => $posts,
+        'auth' => [
+            'user' => auth()->user()
+        ]
     ]);
 });
 
@@ -18,11 +24,15 @@ Route::get('/editor', function () {
     return Inertia::render('Editor');
 })->name('editor');
 
+Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
+Route::get('/blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
+
 // Analytics & Feedback
 Route::post('/api/analytics', [App\Http\Controllers\AnalyticsController::class, 'log']);
 Route::get('/api/usage/status', [App\Http\Controllers\FeedbackController::class, 'checkStatus']);
 Route::post('/api/usage/increment', [App\Http\Controllers\FeedbackController::class, 'increment']);
 Route::post('/api/usage/feedback', [App\Http\Controllers\FeedbackController::class, 'store']);
+Route::post('/api/transcribe', [App\Http\Controllers\TranscriptionController::class, 'transcribe']);
 
 // Socialite - Google Login
 Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');
