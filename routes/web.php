@@ -33,6 +33,7 @@ Route::get('/api/usage/status', [App\Http\Controllers\FeedbackController::class,
 Route::post('/api/usage/increment', [App\Http\Controllers\FeedbackController::class, 'increment']);
 Route::post('/api/usage/feedback', [App\Http\Controllers\FeedbackController::class, 'store']);
 Route::post('/api/transcribe', [App\Http\Controllers\TranscriptionController::class, 'transcribe']);
+Route::post('/api/ai/analyze', [App\Http\Controllers\AIController::class, 'analyze']);
 
 // Socialite - Google Login
 Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');

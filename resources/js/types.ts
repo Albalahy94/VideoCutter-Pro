@@ -29,6 +29,30 @@ export interface Segment {
   name: string
 }
 
+export type MotionLevel = 'static' | 'low' | 'medium' | 'high'
+
+export interface SocialMediaCopy {
+  titles: string[]
+  description: string
+  hashtags: string[]
+}
+
+export interface SegmentAnalysis {
+  segmentId: string
+  thumbnail: string        // base64 data URL — best frame
+  keyFrames: string[]      // 3-5 frames as base64
+  sceneDescription: string
+  visualStyle: string      // colors, lighting, shot type
+  motionLevel: MotionLevel
+  contentTags: string[]    // e.g. ['outdoor', 'interview', 'action']
+  creatorTips: string[]    // actionable tips for content creators
+  bRollSuggestions: string[] // suggested b-roll footage concepts
+  socialMediaCopy: SocialMediaCopy // AI generated copy for YT/TikTok
+  viralScore: number       // 1-100% predicted viral potential
+  mood: string             // emotional tone of the scene
+  analyzedAt: number       // timestamp
+}
+
 export interface ProjectFile {
   id: string
   file: File

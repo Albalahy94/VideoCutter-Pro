@@ -19,6 +19,7 @@ import { ExportSettings } from '../Components/VideoCutter/ExportSettings';
 import { useProject, uuid } from '../Hooks/useProject';
 import { useFFmpeg } from '../Hooks/useFFmpeg';
 import { useLanguage } from '../Hooks/useLanguage';
+import { useVideoAnalysis } from '../Hooks/useVideoAnalysis';
 import { initGoogleDrive, pickFileFromDrive, saveFileToDrive, disconnectDrive } from '../Lib/google-drive-v2';
 import { detectSilence } from '../Lib/ffmpeg-utils';
 import type { Segment } from '../types';
@@ -49,6 +50,7 @@ export default function Editor({ auth }: Props) {
 
   const ffmpeg = useFFmpeg();
   const { isRtl } = useLanguage();
+  const videoAnalysis = useVideoAnalysis(isRtl ? 'ar' : 'en');
   const [needsSurvey, setNeedsSurvey] = useState(false);
   const [isAutoCutting, setIsAutoCutting] = useState(false);
   const [includeSubtitles, setIncludeSubtitles] = useState(false);
@@ -493,6 +495,18 @@ export default function Editor({ auth }: Props) {
                     isAutoCutting={isAutoCutting}
                     videoSpeed={project.videoSpeed}
                     disabled={ffmpeg.isProcessing}
+                    analysisMap={videoAnalysis.analysisMap}
+                    isBatchAnalyzing={videoAnalysis.isBatchAnalyzing}
+                    onAnalyzeSegment={(segId) => {
+                      if (!videoRef.current) return;
+                      const seg = project.segments.find(s => s.id === segId);
+                      if (seg) videoAnalysis.analyzeOne(videoRef.current, seg);
+                    }}
+                    onAnalyzeAll={() => {
+                      if (!videoRef.current) return;
+                      videoAnalysis.analyzeAll(videoRef.current, project.segments);
+                    }}
+                    onClearAnalysis={videoAnalysis.clearSegmentAnalysis}
                   />
                 </>
               )}

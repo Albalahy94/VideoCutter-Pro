@@ -2,6 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         <meta charset="utf-8">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
         <!-- SEO & Social Share -->
         <meta name="description" content="VideoCutter Pro - The fastest browser-based video editor for content creators and vloggers. Cut, merge, and split videos with zero server uploads.">
         <meta name="keywords" content="video cutter, video trimmer, online video editor, shorts maker, vlogger tools, content creator, ffmpeg online, mp4 splitter">

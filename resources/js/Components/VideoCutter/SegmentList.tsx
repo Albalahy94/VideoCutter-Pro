@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Trash2, Play, ChevronDown, ChevronUp, Film, Maximize2 } from 'lucide-react'
+import { Plus, Trash2, Play, ChevronDown, ChevronUp, Film, Maximize2, Brain } from 'lucide-react'
 import type { Segment, ProcessingMode, ProjectFile } from '../../types'
 import { secondsToTime, timeToSeconds, isValidTime } from '../../Lib/time-utils'
 import { clsx } from 'clsx'
 import { useLanguage } from '../../Hooks/useLanguage'
 import { Clock } from 'lucide-react'
+import { SegmentAnalysisPanel, AnalyzeTriggerButton } from './SegmentAnalysisPanel'
+import type { SegmentAnalysisState } from '../../Hooks/useVideoAnalysis'
 
 interface SegmentListProps {
   segments: Segment[]
@@ -27,6 +29,12 @@ interface SegmentListProps {
   onAutoCut?: () => void
   isAutoCutting?: boolean
   disabled?: boolean
+  // AI Analysis props
+  analysisMap?: Record<string, SegmentAnalysisState>
+  onAnalyzeSegment?: (segId: string) => void
+  onAnalyzeAll?: () => void
+  onClearAnalysis?: (segId: string) => void
+  isBatchAnalyzing?: boolean
 }
 
 const modeColors: Record<ProcessingMode, string> = {
@@ -106,6 +114,7 @@ function TimeCell({ value, onChange, disabled }: {
 export function SegmentList({
   segments, files, activeFileId, mode, duration, currentTime, inPoint, videoSpeed,
   onAdd, onUpdate, onRemove, onSort, onClear, onSeekTo, onSwitchToFile, onImportOpen, onSetSegments, onAutoCut, isAutoCutting, disabled,
+  analysisMap = {}, onAnalyzeSegment, onAnalyzeAll, onClearAnalysis, isBatchAnalyzing,
 }: SegmentListProps) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -192,6 +201,26 @@ export function SegmentList({
         </div>
 
         <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 ml-auto">
+          {/* Analyze All Button */}
+          {segments.length > 0 && onAnalyzeAll && (
+            <button
+              onClick={isBatchAnalyzing ? undefined : onAnalyzeAll}
+              disabled={disabled || isBatchAnalyzing}
+              className={clsx(
+                'flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all',
+                isBatchAnalyzing
+                  ? 'text-violet-400 border-violet-500/30 bg-violet-500/10 animate-pulse cursor-not-allowed'
+                  : 'text-violet-500 border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 hover:text-violet-400'
+              )}
+              title={isRtl ? 'تحليل جميع المقاطع بالذكاء الاصطناعي' : 'Analyze all segments with AI'}
+            >
+              <Brain className={clsx('w-3 h-3', isBatchAnalyzing && 'animate-spin')} />
+              {isBatchAnalyzing
+                ? (isRtl ? 'يحلل...' : 'Analyzing...')
+                : (isRtl ? 'تحليل الكل' : 'Analyze All')
+              }
+            </button>
+          )}
           {segments.length > 0 && (
             <>
               <button
@@ -267,7 +296,7 @@ export function SegmentList({
                 <div
                   key={seg.id}
                   className={clsx(
-                    'flex flex-col gap-3 p-5 rounded-[1.5rem] border-2 transition-all animate-fade-in group/item relative overflow-hidden shadow-md min-h-[90px] justify-center',
+                    'shrink-0 flex flex-col gap-3 p-5 rounded-[1.5rem] border-2 transition-all animate-fade-in group/item relative overflow-hidden shadow-md min-h-[90px] justify-center',
                     isActive 
                       ? 'border-accent bg-accent/15 shadow-xl shadow-accent/20 ring-2 ring-accent/30 scale-[1.02] z-10' 
                       : (mode === 'split' ? 'border-blue-500/40 bg-blue-500/10' : mode === 'merge' ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10'),
@@ -318,14 +347,24 @@ export function SegmentList({
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => onRemove(seg.id)}
-                      disabled={disabled}
-                      className="text-text-muted hover:text-mode-exclude transition-colors p-1"
-                      title={isRtl ? 'حذف المقطع' : 'Remove segment'}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {/* AI Analyze trigger */}
+                      {onAnalyzeSegment && (
+                        <AnalyzeTriggerButton
+                          status={(analysisMap[seg.id]?.status) || 'idle'}
+                          thumbnail={analysisMap[seg.id]?.analysis?.thumbnail}
+                          onAnalyze={() => onAnalyzeSegment(seg.id)}
+                        />
+                      )}
+                      <button
+                        onClick={() => onRemove(seg.id)}
+                        disabled={disabled}
+                        className="text-text-muted hover:text-mode-exclude transition-colors p-1"
+                        title={isRtl ? 'حذف المقطع' : 'Remove segment'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Row 2: Start & End Times */}
@@ -379,6 +418,19 @@ export function SegmentList({
                       </div>
                     </div>
                   </div>
+
+                  {/* AI Analysis Panel — shown below segment times */}
+                  {analysisMap[seg.id] && (
+                    <div className="mt-2 pt-2 border-t border-white/5">
+                      <SegmentAnalysisPanel
+                        segmentId={seg.id}
+                        segmentName={seg.name}
+                        state={analysisMap[seg.id]}
+                        onAnalyze={() => onAnalyzeSegment?.(seg.id)}
+                        onClear={() => onClearAnalysis?.(seg.id)}
+                      />
+                    </div>
+                  )}
                 </div>
                 )
               })}
