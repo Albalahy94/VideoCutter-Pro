@@ -34,6 +34,7 @@ Route::post('/api/usage/increment', [App\Http\Controllers\FeedbackController::cl
 Route::post('/api/usage/feedback', [App\Http\Controllers\FeedbackController::class, 'store']);
 Route::post('/api/transcribe', [App\Http\Controllers\TranscriptionController::class, 'transcribe']);
 Route::post('/api/ai/analyze', [App\Http\Controllers\AIController::class, 'analyze']);
+Route::post('/api/ai/separate-audio', [App\Http\Controllers\AIController::class, 'separateAudio']);
 
 // Socialite - Google Login
 Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');
@@ -70,4 +71,3 @@ Route::get('/ffmpeg-proxy/{type}/{file}', function ($type, $file) {
 });
 
 require __DIR__.'/auth.php';
-

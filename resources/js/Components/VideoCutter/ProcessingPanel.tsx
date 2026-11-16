@@ -1,6 +1,6 @@
-import { useRef, useEffect } from 'react'
-import { Loader2, CheckCircle, AlertCircle, Info } from 'lucide-react'
-import type { LogEntry, ProcessingMode } from '../../types'
+import { useRef, useEffect, useState } from 'react'
+import { Loader2, CheckCircle, AlertCircle, Info, Download, Eye } from 'lucide-react'
+import type { LogEntry, ProcessingMode, ExportedResult } from '../../types'
 import { useLanguage } from '../../Hooks/useLanguage'
 import { clsx } from 'clsx'
 
@@ -16,6 +16,8 @@ interface ProcessingPanelProps {
   hasFile: boolean
   onStart: () => void
   onLoadFFmpeg: () => void
+  lastExport?: ExportedResult | null
+  onRedownload?: () => void
 }
 
 
@@ -32,9 +34,10 @@ const modeBar: Record<ProcessingMode, string> = {
 
 export function ProcessingPanel({
   mode, isProcessing, isLoading, isLoaded, progress, step, logs,
-  segments, hasFile, onStart, onLoadFFmpeg,
+  segments, hasFile, onStart, onLoadFFmpeg, lastExport, onRedownload
 }: ProcessingPanelProps) {
   const { isRtl } = useLanguage()
+  const [showPreview, setShowPreview] = useState(false)
   const logsContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -88,6 +91,68 @@ export function ProcessingPanel({
               style={{ width: `${progress}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Last Export & Re-Download Card */}
+      {lastExport && !isProcessing && (
+        <div className="p-3.5 bg-gradient-to-r from-emerald-500/10 via-accent/10 to-transparent border border-emerald-500/30 rounded-2xl flex flex-col gap-2.5 animate-fade-in shadow-lg shadow-emerald-500/5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                  {isRtl ? 'الفيديو جاهز ومحفوظ في الذاكرة!' : 'Export Ready in Memory!'}
+                  <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded font-mono font-bold">
+                    {(lastExport.size / (1024 * 1024)).toFixed(1)} MB
+                  </span>
+                </h4>
+                <p className="text-[10px] text-text-muted truncate max-w-[200px] sm:max-w-[260px]">
+                  {lastExport.name}
+                </p>
+              </div>
+            </div>
+            
+            {!lastExport.isZip && (
+              <button
+                type="button"
+                onClick={() => setShowPreview(!showPreview)}
+                className="text-[10px] px-2 py-1 rounded-lg bg-bg-elevated hover:bg-bg-border border border-bg-border text-text-secondary flex items-center gap-1 transition-colors"
+                title={isRtl ? 'معاينة الفيديو' : 'Preview video'}
+              >
+                <Eye className="w-3 h-3" />
+                {showPreview ? (isRtl ? 'إخفاء' : 'Hide') : (isRtl ? 'معاينة' : 'Preview')}
+              </button>
+            )}
+          </div>
+
+          <p className="text-[10px] text-text-muted leading-tight">
+            {isRtl
+              ? '💡 الملف تم حفظه في ذاكرة المتصفح. إذا تعذر التحميل بسبب امتلاء القرص أو إيقاف المتصفح، يمكنك إعادة تحميله فوراً دون انتظار.'
+              : '💡 File safely stored in browser memory. If download was interrupted or disk full, re-download instantly without re-processing.'}
+          </p>
+
+          <button
+            type="button"
+            onClick={onRedownload}
+            className="w-full py-2.5 px-3 rounded-xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs shadow-md shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all active:scale-95"
+          >
+            <Download className="w-4 h-4" />
+            {isRtl ? 'تحميل الملف مرة أخرى (Re-Download)' : 'Download Again (Instant)'}
+          </button>
+
+          {showPreview && !lastExport.isZip && (
+            <div className="mt-2 pt-2 border-t border-bg-border/60">
+              <video
+                src={lastExport.url}
+                controls
+                playsInline
+                className="w-full rounded-xl max-h-48 bg-black border border-bg-border"
+              />
+            </div>
+          )}
         </div>
       )}
 

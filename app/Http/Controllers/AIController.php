@@ -68,4 +68,125 @@ class AIController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Separate vocals from music/instruments using AI model (Ultimate Vocal Remover / MDX-Net).
+     */
+    public function separateAudio(Request $request)
+    {
+        // Increase time limit for AI model processing
+        set_time_limit(300);
+
+        $request->validate([
+            'audio' => 'required|file|max:153600', // 150MB max
+            'stem' => 'nullable|string|in:vocals,instrumental,both'
+        ]);
+
+        $stem = $request->input('stem', 'vocals');
+        $file = $request->file('audio');
+
+        $sessionDir = storage_path('app/ai_separation/' . uniqid('sep_', true));
+        if (!file_exists($sessionDir)) {
+            mkdir($sessionDir, 0775, true);
+        }
+
+        $originalExtension = $file->getClientOriginalExtension() ?: 'wav';
+        $inputPath = $sessionDir . DIRECTORY_SEPARATOR . 'input.' . $originalExtension;
+        $file->move($sessionDir, 'input.' . $originalExtension);
+
+        $outputDir = $sessionDir . DIRECTORY_SEPARATOR . 'output';
+        mkdir($outputDir, 0775, true);
+
+        // Find Python executable in venv or system
+        $pythonCandidates = [
+            base_path('venv/bin/python'),
+            '/var/www/videocutterpro/venv/bin/python',
+            base_path('venv/Scripts/python.exe'),
+            'python3',
+            'python'
+        ];
+
+        $pythonBin = 'python3';
+        foreach ($pythonCandidates as $candidate) {
+            if (str_starts_with($candidate, '/') || str_contains($candidate, ':\\')) {
+                if (file_exists($candidate)) {
+                    $pythonBin = $candidate;
+                    break;
+                }
+            }
+        }
+
+        $scriptPath = base_path('scripts/separate_audio.py');
+        if (!file_exists($scriptPath)) {
+            $scriptPath = '/var/www/videocutterpro/scripts/separate_audio.py';
+        }
+
+        if (!file_exists($scriptPath)) {
+            Log::error('Audio separator script not found', ['path' => $scriptPath]);
+            return response()->json(['error' => 'AI separation script not found on server.'], 500);
+        }
+
+        $escapedInput = escapeshellarg($inputPath);
+        $escapedOutput = escapeshellarg($outputDir);
+        $escapedStem = escapeshellarg($stem);
+        putenv('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
+        $command = "{$pythonBin} " . escapeshellarg($scriptPath) . " --input {$escapedInput} --output_dir {$escapedOutput} --stem {$escapedStem} 2>&1";
+
+        Log::info('Starting AI audio separation', ['command' => $command]);
+
+        $output = [];
+        $returnVar = 0;
+        exec($command, $output, $returnVar);
+
+        $outputString = implode("\n", $output);
+        Log::info('AI separation process finished', ['exitCode' => $returnVar, 'output' => $outputString]);
+
+        // Find json in output
+        $jsonStart = strpos($outputString, '{');
+        $jsonEnd = strrpos($outputString, '}');
+
+        if ($jsonStart === false || $jsonEnd === false) {
+            Log::error('AI separation produced no JSON output', ['raw' => $outputString]);
+            return response()->json([
+                'error' => 'فشل معالجة الصوت بالذكاء الاصطناعي على السيرفر.',
+                'details' => $outputString
+            ], 500);
+        }
+
+        $jsonStr = substr($outputString, $jsonStart, $jsonEnd - $jsonStart + 1);
+        $result = json_decode($jsonStr, true);
+
+        if (!$result || empty($result['success'])) {
+            $errMsg = $result['error'] ?? 'حدث خطأ أثناء فصل مسارات الصوت.';
+            Log::error('AI separation failed', ['error' => $errMsg, 'raw' => $outputString]);
+            return response()->json(['error' => $errMsg], 500);
+        }
+
+        // Determine target file to return
+        $targetFile = null;
+        if ($stem === 'vocals') {
+            $targetFile = $result['vocals'] ?? null;
+        } elseif ($stem === 'instrumental') {
+            $targetFile = $result['instrumental'] ?? null;
+        }
+
+        if (!$targetFile || !file_exists($targetFile)) {
+            // Fallback to first generated file if any
+            $allOutputs = $result['all_outputs'] ?? [];
+            if (!empty($allOutputs) && file_exists($allOutputs[0])) {
+                $targetFile = $allOutputs[0];
+            }
+        }
+
+        if (!$targetFile || !file_exists($targetFile)) {
+            return response()->json(['error' => 'لم يتم العثور على المسار المعزول الناتج.'], 500);
+        }
+
+        // Return the clean audio file
+        return response()->download($targetFile, basename($targetFile), [
+            'Content-Type' => 'audio/wav',
+            'Access-Control-Allow-Origin' => '*',
+            'Cross-Origin-Resource-Policy' => 'cross-origin'
+        ]);
+    }
 }

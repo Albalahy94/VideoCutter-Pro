@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { processVideo, getFFmpeg, resetFFmpeg } from '../Lib/ffmpeg-utils'
-import type { Segment, ProcessingMode, LogEntry, AspectRatio, TransitionType, ProjectFile, VisualFilter, Overlay, AudioPreset, VocalIsolationMode } from '../types'
+import type { Segment, ProcessingMode, LogEntry, AspectRatio, TransitionType, ProjectFile, VisualFilter, Overlay, AudioPreset, VocalIsolationMode, ExportResolution, ExportFormat, ExportBitrate, ExportedResult } from '../types'
 import { useLanguage } from './useLanguage'
 
 function makeLog(type: LogEntry['type'], message: string): LogEntry {
@@ -14,6 +14,7 @@ export function useFFmpeg() {
   const [progress, setProgress] = useState(0)
   const [step, setStep] = useState('')
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [lastExport, setLastExport] = useState<ExportedResult | null>(null)
   const { isRtl } = useLanguage()
   const abortRef = useRef(false)
 
@@ -103,7 +104,7 @@ export function useFFmpeg() {
         addLog('ok', isRtl ? 'المحرك جاهز!' : 'FFmpeg ready!')
       }
 
-      await processVideo(
+      const result = await processVideo(
         files,
         segments,
         mode,
@@ -131,8 +132,12 @@ export function useFFmpeg() {
         exportBitrate
       )
 
+      if (result) {
+        setLastExport(result)
+      }
+
       playSuccessSound();
-      addLog('ok', isRtl ? '🎉 اكتملت المعالجة بنجاح! تم تحميل ملفاتك.' : '🎉 Processing complete! Your files are ready.')
+      addLog('ok', isRtl ? '🎉 اكتملت المعالجة بنجاح! تم حفظ الملف في الذاكرة ويمكنك إعادة تحميله في أي وقت.' : '🎉 Processing complete! Saved in browser memory and ready for download.')
     } catch (err: any) {
       let msg = err?.message || String(err)
       let displayMsg = msg
@@ -165,6 +170,24 @@ export function useFFmpeg() {
     }
   }, [isProcessing, isLoaded, addLog, isRtl])
 
+  const redownload = useCallback(() => {
+    if (!lastExport) return
+    const a = document.createElement('a')
+    a.href = lastExport.url
+    a.download = lastExport.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    addLog('ok', isRtl ? `جاري تحميل ${lastExport.name}...` : `Downloading ${lastExport.name}...`)
+  }, [lastExport, addLog, isRtl])
+
+  const clearLastExport = useCallback(() => {
+    if (lastExport?.url) {
+      URL.revokeObjectURL(lastExport.url)
+    }
+    setLastExport(null)
+  }, [lastExport])
+
   return {
     isLoading,
     isLoaded,
@@ -172,6 +195,9 @@ export function useFFmpeg() {
     progress,
     step,
     logs,
+    lastExport,
+    redownload,
+    clearLastExport,
     loadFFmpeg,
     process,
   }

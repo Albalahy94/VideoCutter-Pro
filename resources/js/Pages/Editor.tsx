@@ -270,7 +270,8 @@ export default function Editor({ auth }: Props) {
       );
       stopKeepAwake();
 
-      const successMsg = isRtl ? '🎉 اكتمل تصدير الفيديو بنجاح! يمكنك تحميله الآن.' : '🎉 Video export complete! Ready to download.';
+      setActiveTab('export');
+      const successMsg = isRtl ? '🎉 اكتمل تصدير الفيديو بنجاح! تم حفظ الملف في الذاكرة ويمكنك إعادة تحميله في أي وقت.' : '🎉 Video export complete! Saved in memory and ready for download.';
       showToast(successMsg, 'success', true);
 
       try {
@@ -706,6 +707,8 @@ export default function Editor({ auth }: Props) {
                     hasFile={project.files.length > 0}
                     onStart={handleStart}
                     onLoadFFmpeg={ffmpeg.loadFFmpeg}
+                    lastExport={ffmpeg.lastExport}
+                    onRedownload={ffmpeg.redownload}
                   />
                 </>
               )}

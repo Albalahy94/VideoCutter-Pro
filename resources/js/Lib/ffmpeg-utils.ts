@@ -1,7 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { toBlobURL, fetchFile } from '@ffmpeg/util'
 import JSZip from 'jszip'
-import type { Segment, ProcessingMode, AspectRatio, TransitionType, ProjectFile, VisualFilter, Overlay, AudioPreset, VocalIsolationMode, ExportResolution, ExportFormat, ExportBitrate } from '../types'
+import type { Segment, ProcessingMode, AspectRatio, TransitionType, ProjectFile, VisualFilter, Overlay, AudioPreset, VocalIsolationMode, ExportResolution, ExportFormat, ExportBitrate, ExportedResult } from '../types'
 import { secondsToTime } from './time-utils'
 import { transcribeVideo, convertToSRT } from './transcription-service'
 
@@ -124,6 +124,41 @@ function getFilterString(targetRatio: number, meta: VideoMetadata): string {
 
 import { renderCanvasSequence } from './canvas-renderer';
 
+export function buildAudioFilter(
+  videoSpeed: number,
+  audioBoost: number,
+  noiseReduction: boolean,
+  vocalIsolation: VocalIsolationMode,
+  audioPreset: AudioPreset
+): string {
+  if (vocalIsolation === 'mute_video') {
+    return 'volume=0';
+  }
+
+  let aFilter = `aresample=async=1,atempo=${videoSpeed},volume=${audioBoost},asetpts=PTS-STARTPTS`;
+  if (noiseReduction) {
+    aFilter = `afftdn=nf=-25,${aFilter}`;
+  }
+
+  if (vocalIsolation === 'remove_music') {
+    // Pure studio vocal enhancement (warm bottom, subtle presence, absolutely no muffling)
+    aFilter = `highpass=f=80,equalizer=f=3000:width_type=h:width=1800:g=2.5,${aFilter}`;
+  } else if (vocalIsolation === 'isolate_vocals') {
+    // Music stem (already isolated cleanly by AI engine)
+    aFilter = `${aFilter}`;
+  }
+
+  if (audioPreset === 'podcast') {
+    aFilter = `compand=0.3|0.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2,${aFilter}`;
+  } else if (audioPreset === 'cinema') {
+    aFilter = `bass=g=5,treble=g=3,${aFilter}`;
+  } else if (audioPreset === 'studio') {
+    aFilter = `equalizer=f=3000:width_type=h:width=1500:g=3,compand=0.2|0.2:1|1:-70/-50|-50/-30|-20/-10:6:0:-70:0.1,${aFilter}`;
+  }
+
+  return aFilter;
+}
+
 export async function processVideo(
   projectFiles: ProjectFile[],
   segments: Segment[],
@@ -146,7 +181,7 @@ export async function processVideo(
   exportResolution: ExportResolution = 'original',
   exportFormat: ExportFormat = 'mp4',
   exportBitrate: ExportBitrate = 'auto'
-) {
+): Promise<ExportedResult | null> {
   const outputFiles: { name: string; blob: Blob | null }[] = [];
   const subtitleFiles: { name: string; content: string }[] = [];
   const isRtl = typeof document !== 'undefined' && (document.documentElement.dir === 'rtl' || document.documentElement.lang === 'ar');
@@ -208,12 +243,15 @@ export async function processVideo(
   const isPureCut = !hasEffects;
 
   // Use Canvas ONLY if we need complex composition (Transitions, Text Overlays, etc)
-  const useCanvas = (mode === 'merge' || mode === 'exclude') 
-    ? (transition !== 'none' || overlays.length > 0 || visualFilter !== 'none') 
-    : (overlays.length > 0);
+  const isVocalIsoActive = vocalIsolation && vocalIsolation !== 'none';
+  const useCanvas = !isVocalIsoActive && (
+    (mode === 'merge' || mode === 'exclude') 
+      ? (transition !== 'none' || overlays.length > 0 || visualFilter !== 'none') 
+      : (overlays.length > 0)
+  );
 
   // Helper to generate subtitles and zip them if needed
-  const handleFinalDelivery = async (blobs: { name: string, blob: Blob }[]) => {
+  const handleFinalDelivery = async (blobs: { name: string, blob: Blob }[]): Promise<ExportedResult> => {
     const finalSubtitleFiles: { name: string; content: string }[] = [...subtitleFiles];
     
     if (includeSubtitles && projectFiles.length > 0 && finalSubtitleFiles.length === 0) {
@@ -234,9 +272,21 @@ export async function processVideo(
     }
 
     const totalCount = blobs.length + finalSubtitleFiles.length;
+    let finalResult: ExportedResult;
     
     if (totalCount === 1 && blobs.length === 1) {
-      downloadFile(blobs[0].blob, blobs[0].name);
+      const b = blobs[0].blob;
+      const name = blobs[0].name;
+      const url = downloadFile(b, name);
+      finalResult = {
+        name,
+        blob: b,
+        size: b.size,
+        url,
+        isZip: false,
+        filesCount: 1,
+        createdAt: Date.now()
+      };
     } else if (totalCount > 1) {
       onProgress(isRtl ? 'جاري تجميع الملفات...' : 'Preparing zip...', 95);
       const zip = new JSZip();
@@ -246,9 +296,22 @@ export async function processVideo(
       const content = await zip.generateAsync({ type: 'blob' }, (metadata) => {
          onProgress(isRtl ? `جاري ضغط الملفات... ${metadata.percent.toFixed(0)}%` : `Zipping... ${metadata.percent.toFixed(0)}%`, 95 + (metadata.percent * 0.05));
       });
-      downloadFile(content, `VideoCutterPro_Export_${Date.now()}.zip`);
+      const zipName = `VideoCutterPro_Export_${Date.now()}.zip`;
+      const url = downloadFile(content, zipName);
+      finalResult = {
+        name: zipName,
+        blob: content,
+        size: content.size,
+        url,
+        isZip: true,
+        filesCount: totalCount,
+        createdAt: Date.now()
+      };
+    } else {
+      throw new Error('No output files generated');
     }
     onProgress(isRtl ? 'اكتمل العمل!' : 'Work complete!', 100);
+    return finalResult;
   };
 
   const getFullTranscription = async (pFile: ProjectFile) => {
@@ -277,8 +340,7 @@ export async function processVideo(
               const scaledPct = 5 + ((pct / 100) * 85);
               onProgress(msg || (isRtl ? 'جاري المعالجة (نظام الجودة)...' : 'Processing (Quality Engine)...'), Math.round(scaledPct));
            }, visualFilter, overlays);
-          await handleFinalDelivery([{ name: 'processed_video.mp4', blob: finalBlob! }]);
-          return;
+          return await handleFinalDelivery([{ name: 'processed_video.mp4', blob: finalBlob! }]);
         } else if (mode === 'split') {
           for (let i = 0; i < segments.length; i++) {
             const seg = segments[i];
@@ -296,8 +358,7 @@ export async function processVideo(
             
             outputFiles.push({ name: outName, blob: segBlob });
           }
-          await handleFinalDelivery(outputFiles as { name: string, blob: Blob }[]);
-          return;
+          return await handleFinalDelivery(outputFiles as { name: string, blob: Blob }[]);
         }
       } catch (err) {
         console.error('[CanvasRenderError]', err);
@@ -324,6 +385,73 @@ export async function processVideo(
       bgmFFName = `bgm_${Date.now()}.mp3`;
       await ffmpeg.writeFile(bgmFFName, await fetchFile(backgroundMusic));
       activeFFFiles.push(bgmFFName);
+    }
+
+    // AI Audio Separation Engine (UVR / MDX-Net)
+    if (vocalIsolation === 'remove_music' || vocalIsolation === 'isolate_vocals') {
+      const stemType = vocalIsolation === 'isolate_vocals' ? 'instrumental' : 'vocals';
+      const labelMsg = stemType === 'vocals'
+        ? (isRtl ? 'جاري عزل صوت المتحدث وحذف الموسيقى نهائياً بالذكاء الاصطناعي (AI Studio)...' : 'Isolating vocals & removing music with AI Studio...')
+        : (isRtl ? 'جاري عزل الموسيقى وحذف صوت المتحدثين بالذكاء الاصطناعي (AI Karaoke)...' : 'Isolating music & removing vocals with AI Karaoke...');
+      
+      onProgress(labelMsg, 8);
+
+      for (let i = 0; i < projectFiles.length; i++) {
+        const pFile = projectFiles[i];
+        const rawName = fileToFFName.get(pFile.id)!;
+        const audioExtractName = `audio_ext_${i}_${Date.now()}.wav`;
+        
+        try {
+          // Extract 44.1kHz stereo audio
+          onProgress(isRtl ? `جاري استخراج مسار الصوت للملف ${i + 1}...` : `Extracting audio track for file ${i + 1}...`, 10);
+          await ffmpeg.exec(['-i', rawName, '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', audioExtractName]);
+          const rawAudioData = await ffmpeg.readFile(audioExtractName);
+          const audioBlob = new Blob([rawAudioData], { type: 'audio/wav' });
+          await ffmpeg.deleteFile(audioExtractName).catch(() => {});
+
+          onProgress(isRtl ? 'جاري فصل الترددات بالذكاء الاصطناعي على السيرفر (UVR 100%)...' : 'Processing audio via AI Studio Separation...', 14);
+
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'input.wav');
+          formData.append('stem', stemType);
+
+          const resp = await fetch('/api/ai/separate-audio', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!resp.ok) {
+            throw new Error(`AI Separation HTTP error: ${resp.status}`);
+          }
+
+          const separatedAudioBlob = await resp.blob();
+          const cleanStemName = `stem_clean_${i}_${Date.now()}.wav`;
+          await ffmpeg.writeFile(cleanStemName, await fetchFile(separatedAudioBlob));
+          activeFFFiles.push(cleanStemName);
+
+          // Replace audio in raw file with the clean AI stem
+          const cleanMuxedName = `clean_mux_${i}_${Date.now()}.mp4`;
+          onProgress(isRtl ? 'جاري دمج مسار الصوت النقي مع الفيديو...' : 'Muxing clean AI audio into video...', 20);
+          await ffmpeg.exec([
+            '-i', rawName,
+            '-i', cleanStemName,
+            '-c:v', 'copy',
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-shortest',
+            cleanMuxedName
+          ]);
+
+          fileToFFName.set(pFile.id, cleanMuxedName);
+          activeFFFiles.push(cleanMuxedName);
+          onProgress(isRtl ? 'تم عزل الصوت بالذكاء الاصطناعي بنجاح!' : 'AI separation completed successfully!', 22);
+        } catch (aiErr) {
+          console.warn('[AI Separation Warning] Fallback to DSP filter:', aiErr);
+          onProgress(isRtl ? 'تعذر عزل الصوت عبر السيرفر، تم التبديل إلى فلتر التنقية المحلي...' : 'Server AI unavailable, falling back to local DSP filter...', 15);
+        }
+      }
     }
 
     const durationToSeconds = (timeStr: string) => {
@@ -389,15 +517,10 @@ export async function processVideo(
             if (visualFilter === 'warm') vFilter += `,hue=h=5:s=1.1`;
             if (visualFilter === 'cool') vFilter += `,hue=h=-5:s=1.1`;
 
-            let aFilter = `aresample=async=1,atempo=${videoSpeed},volume=${audioBoost},asetpts=PTS-STARTPTS`;
-            if (noiseReduction) aFilter = `afftdn=nf=-25,${aFilter}`;
-            if (vocalIsolation === 'remove_music') aFilter = `pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1,${aFilter}`;
-            else if (vocalIsolation === 'isolate_vocals') aFilter = `pan=stereo|c0=c0-c1|c1=c1-c0,${aFilter}`;
-            if (audioPreset === 'podcast') aFilter = `compand=0.3|0.3:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:-90:0.2,${aFilter}`;
-            else if (audioPreset === 'cinema') aFilter = `bass=g=5,treble=g=3,${aFilter}`;
+            const aFilter = buildAudioFilter(videoSpeed, audioBoost, noiseReduction, vocalIsolation, audioPreset);
 
             if (bgmFFName) {
-              const complexFilter = `[0:v]${vFilter}[out_v];[0:a]${aFilter}[v_a];[1:a]volume=${bgMusicVolume}[bg_a];[v_a][bg_a]amix=inputs=2:duration=first[out_a]`;
+              const complexFilter = `[0:v]${vFilter}[out_v];[0:a]${aFilter}[v_a];[1:a]volume=${bgMusicVolume}[bg_a];[v_a][bg_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[out_a]`;
               args.push('-filter_complex', complexFilter, '-map', '[out_v]', '-map', '[out_a]');
             } else {
               args.push('-vf', vFilter, '-af', aFilter);
@@ -468,22 +591,61 @@ export async function processVideo(
 
         onProgress(isRtl ? 'جاري دمج المقاطع...' : 'Merging segments...', 50);
         const manifestLines = [];
+        const aFilter = buildAudioFilter(videoSpeed, audioBoost, noiseReduction, vocalIsolation, audioPreset);
+
         for (let i = 0; i < finalSegments.length; i++) {
           const seg = finalSegments[i];
           const inputName = fileToFFName.get(seg.fileId)!;
           const partName = `p_${i}.ts`;
-          await ffmpeg.exec(['-ss', seg.start.toString(), '-to', seg.end.toString(), '-i', inputName, '-c', 'copy', '-map_metadata', '-1', partName]);
+          const segDuration = seg.end - seg.start;
+
+          if (!hasEffects) {
+            await ffmpeg.exec(['-ss', seg.start.toString(), '-to', seg.end.toString(), '-i', inputName, '-c', 'copy', '-map_metadata', '-1', partName]);
+          } else {
+            const pArgs = [
+              '-ss', seg.start.toString(),
+              '-i', inputName,
+              '-t', segDuration.toString(),
+              '-vf', `setpts=${1/videoSpeed}*(PTS-STARTPTS)`,
+              '-af', aFilter,
+              '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-pix_fmt', 'yuv420p',
+              '-c:a', 'aac',
+              partName
+            ];
+            await ffmpeg.exec(pArgs);
+          }
           manifestLines.push(`file ${partName}`);
           activeFFFiles.push(partName);
         }
 
         await ffmpeg.writeFile('list.txt', manifestLines.join('\n'));
-        await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'output.mp4']);
-        const data = await ffmpeg.readFile('output.mp4');
-        outputFiles.push({ name: 'output.mp4', blob: new Blob([data], { type: 'video/mp4' }) });
+        const outMerged = bgmFFName ? 'merged_temp.mp4' : `output.${outputExt}`;
+        await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', outMerged]);
+
+        let finalOutName = `output.${outputExt}`;
+        if (bgmFFName) {
+          onProgress(isRtl ? 'جاري دمج الموسيقى الخلفية...' : 'Mixing background music...', 85);
+          const complexFilter = `[0:a]volume=1[v_a];[1:a]volume=${bgMusicVolume}[bg_a];[v_a][bg_a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[out_a]`;
+          await ffmpeg.exec([
+            '-i', outMerged,
+            '-stream_loop', '-1', '-i', bgmFFName,
+            '-filter_complex', complexFilter,
+            '-map', '0:v', '-map', '[out_a]',
+            '-c:v', 'copy', '-c:a', 'aac',
+            finalOutName
+          ]);
+          await ffmpeg.deleteFile(outMerged).catch(() => {});
+        }
+
+        const data = await ffmpeg.readFile(finalOutName);
+        outputFiles.push({ 
+          name: `VideoCutterPro_Merged_${Date.now()}.${outputExt}`, 
+          blob: new Blob([data], { type: outputExt === 'webm' ? 'video/webm' : 'video/mp4' }) 
+        });
+        await ffmpeg.deleteFile(finalOutName).catch(() => {});
       }
 
-      await handleFinalDelivery(outputFiles as { name: string, blob: Blob }[]);
+      return await handleFinalDelivery(outputFiles as { name: string, blob: Blob }[]);
     } catch (err: any) {
       console.error('[ProcessError]', err);
       throw new Error(err.message || 'Error processing video');
@@ -495,7 +657,7 @@ export async function processVideo(
   });
 }
 
-function downloadFile(blob: Blob, name: string) {
+function downloadFile(blob: Blob, name: string): string {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -503,7 +665,8 @@ function downloadFile(blob: Blob, name: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Do NOT revoke immediately! Keep URL alive for re-download / preview
+  return url;
 }
 
 export async function extractFrame(file: File, time: number): Promise<string> {

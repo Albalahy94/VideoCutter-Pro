@@ -1,4 +1,4 @@
-import { Monitor, Smartphone, Tv, Square, Wand2, Sparkles, Gauge, Volume2, Zap, Palette, Wind, Music, ShieldCheck, Headphones, Shield, Mic2 } from 'lucide-react'
+import { Monitor, Smartphone, Tv, Square, Wand2, Sparkles, Gauge, Volume2, VolumeX, Zap, Palette, Wind, Music, ShieldCheck, Headphones, Shield, Mic2 } from 'lucide-react'
 import type { AspectRatio, TransitionType, VisualFilter, AudioPreset, VocalIsolationMode } from '../../types'
 import { useLanguage } from '../../Hooks/useLanguage'
 import { clsx } from 'clsx'
@@ -230,33 +230,50 @@ export function EffectsSelector({
 
       {/* Vocal / Music Separation */}
       <section className="pt-4 border-t border-bg-border space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
-          <Mic2 className="w-3 h-3" />
-          {isRtl ? 'نزع / عزل الصوت' : 'Vocal / Music Separation'}
-        </h3>
-        <p className="text-[9px] text-text-muted italic">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+            <Mic2 className="w-3 h-3 text-accent-light" />
+            {isRtl ? 'فصل ونزع الموسيقى / الصوت (بالذكاء الاصطناعي AI)' : 'AI Vocal & Music Separation'}
+          </h3>
+          {vocalIsolation !== 'none' && (
+            <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-mono font-medium">
+              {vocalIsolation === 'mute_video' 
+                ? (isRtl ? 'صامت' : 'Muted') 
+                : vocalIsolation === 'remove_music' 
+                  ? (isRtl ? 'نزع الموسيقى (AI Studio)' : 'AI Vocal Only') 
+                  : (isRtl ? 'موسيقى فقط (AI Karaoke)' : 'AI Music Only')}
+            </span>
+          )}
+        </div>
+        <p className="text-[10px] text-text-muted leading-relaxed">
           {isRtl
-            ? '⚠️ يعمل بشكل أفضل على ملفات Stereo. النتيجة قد تختلف حسب جودة الملف.'
-            : '⚠️ Best on stereo files. Results vary by source quality.'}
+            ? 'محرك الذكاء الاصطناعي (UVR/MDX-Net) لفصل الترددات بنقاء 100%: اختر نزع الموسيقى تماماً لإبراز صوت المتحدث كأنه في استوديو، أو عزل الموسيقى وحذف الكلام، أو كتم الصوت.'
+            : 'AI Studio separation: remove background music completely to keep clean dialogue, isolate music tracks, or mute audio.'}
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {([
-            { id: 'none'           , labelEn: 'Off',         labelAr: 'إيقاف'       },
-            { id: 'remove_music'   , labelEn: 'Vocals Only', labelAr: 'صوت فقط'     },
-            { id: 'isolate_vocals' , labelEn: 'Music Only',  labelAr: 'موسيقى فقط'  },
+            { id: 'none'           , labelEn: 'Normal Audio'    , labelAr: 'صوت عادي'                  , descEn: 'Original track'        , descAr: 'المسار الأصلي' },
+            { id: 'remove_music'   , labelEn: 'AI Vocal Only'   , labelAr: 'نزع الموسيقى (AI Studio)'  , descEn: 'Studio Voice 100%'     , descAr: 'كلام نقي 100%' },
+            { id: 'isolate_vocals' , labelEn: 'AI Music Only'   , labelAr: 'موسيقى فقط (AI Karaoke)'   , descEn: 'Karaoke / Music'       , descAr: 'موسيقى بدون كلام' },
+            { id: 'mute_video'     , labelEn: 'Mute Audio'      , labelAr: 'كتم الصوت نهائياً'         , descEn: 'Silent video'          , descAr: 'فيديو صامت' },
           ] as const).map(opt => (
             <button
               key={opt.id}
               disabled={disabled}
               onClick={() => onVocalIsolationChange(opt.id)}
               className={clsx(
-                'py-1.5 px-2 rounded-lg text-[10px] font-medium border transition-all text-center',
+                'py-2 px-2.5 rounded-xl text-left border transition-all flex flex-col gap-0.5 items-start',
                 vocalIsolation === opt.id
-                  ? 'bg-accent/10 border-accent text-accent'
-                  : 'bg-bg-elevated border-bg-border text-text-muted hover:bg-bg-border'
+                  ? 'bg-accent/15 border-accent text-accent shadow-sm shadow-accent/10'
+                  : 'bg-bg-elevated border-bg-border text-text-muted hover:bg-bg-border hover:text-text-primary'
               )}
             >
-              {isRtl ? opt.labelAr : opt.labelEn}
+              <span className="text-[11px] font-bold">
+                {isRtl ? opt.labelAr : opt.labelEn}
+              </span>
+              <span className="text-[9px] opacity-75">
+                {isRtl ? opt.descAr : opt.descEn}
+              </span>
             </button>
           ))}
         </div>

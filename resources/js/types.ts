@@ -3,10 +3,20 @@ export type AspectRatio = 'original' | 'shorts' | 'youtube' | 'square'
 export type TransitionType = 'none' | 'fade'
 export type VisualFilter = 'none' | 'grayscale' | 'sepia' | 'vintage' | 'warm' | 'cool'
 export type AudioPreset = 'normal' | 'podcast' | 'cinema' | 'studio'
-export type VocalIsolationMode = 'none' | 'remove_music' | 'isolate_vocals'
+export type VocalIsolationMode = 'none' | 'remove_music' | 'isolate_vocals' | 'mute_video'
 export type ExportResolution = 'original' | '1080p' | '720p' | '480p' | '360p'
 export type ExportFormat = 'mp4' | 'webm'
 export type ExportBitrate = 'auto' | 'high' | 'medium' | 'low'
+
+export interface ExportedResult {
+  name: string
+  blob: Blob
+  size: number
+  url: string
+  isZip: boolean
+  filesCount: number
+  createdAt: number
+}
 
 export interface Overlay {
   id: string
