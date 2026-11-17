@@ -35,6 +35,9 @@ Route::post('/api/usage/feedback', [App\Http\Controllers\FeedbackController::cla
 Route::post('/api/transcribe', [App\Http\Controllers\TranscriptionController::class, 'transcribe']);
 Route::post('/api/ai/analyze', [App\Http\Controllers\AIController::class, 'analyze']);
 Route::post('/api/ai/separate-audio', [App\Http\Controllers\AIController::class, 'separateAudio']);
+Route::post('/api/ai/separate-audio-async', [App\Http\Controllers\AIController::class, 'startAsyncSeparation']);
+Route::get('/api/ai/job-status/{jobId}', [App\Http\Controllers\AIController::class, 'getJobStatus']);
+Route::get('/api/ai/job-download/{jobId}', [App\Http\Controllers\AIController::class, 'downloadJobOutput']);
 
 // Socialite - Google Login
 Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');

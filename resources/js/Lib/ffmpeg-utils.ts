@@ -383,12 +383,11 @@ export async function processVideo(
       activeFFFiles.push(bgmFFName);
     }
 
-    // AI Audio Separation Engine (Demucs v4 4-Stem Deep Isolation)
+    // AI Audio Separation Engine (Async Background Queue + MDX-Net & Acoustic De-percussion)
     if (vocalIsolation === 'remove_music') {
-      const stemType = 'vocals';
       const labelMsg = isRtl 
-        ? 'جاري عزل صوت المتحدث وحذف الموسيقى والدف والطبول 100% بالذكاء الاصطناعي (Demucs v4)...' 
-        : 'Isolating vocals & eliminating music, duff & drums 100% via AI Demucs v4...';
+        ? 'جاري تجهيز مسار الصوت ونزع الموسيقى والدفوف والطبول 100%...' 
+        : 'Preparing audio & eliminating all music, duff & drums 100% via AI...';
       
       onProgress(labelMsg, 8);
 
@@ -405,30 +404,74 @@ export async function processVideo(
           const audioBlob = new Blob([rawAudioData], { type: 'audio/wav' });
           await ffmpeg.deleteFile(audioExtractName).catch(() => {});
 
-          onProgress(isRtl ? 'جاري عزل الطبول والدفوف والموسيقى بالذكاء الاصطناعي (Demucs 4-Stem 100%)...' : 'Processing audio via Demucs 4-Stem AI Engine...', 14);
+          onProgress(isRtl ? 'جاري رفع الصوت وبدء عزل الموسيقى والدف والطبول بالذكاء الاصطناعي...' : 'Uploading audio to background AI separation queue...', 12);
 
           const formData = new FormData();
           formData.append('audio', audioBlob, 'input.wav');
-          formData.append('stem', stemType);
-          formData.append('model', 'htdemucs_ft.yaml');
+          formData.append('stem', 'vocals');
+          formData.append('model', 'UVR-MDX-NET-Inst_HQ_3.onnx');
 
-          const resp = await fetch('/api/ai/separate-audio', {
+          const startResp = await fetch('/api/ai/separate-audio-async', {
             method: 'POST',
             body: formData,
           });
 
-          if (!resp.ok) {
-            throw new Error(`AI Separation HTTP error: ${resp.status}`);
+          if (!startResp.ok) {
+            throw new Error(`AI Separation init failed: HTTP ${startResp.status}`);
           }
 
-          const separatedAudioBlob = await resp.blob();
+          const { job_id } = await startResp.json();
+          if (!job_id) {
+            throw new Error('لم يتم استلام معرف المهمة من خادم الذكاء الاصطناعي.');
+          }
+
+          // Poll job status until completed
+          const startTime = Date.now();
+          const maxWaitMs = 1800000; // 30 minutes max
+          let isDone = false;
+
+          while (!isDone) {
+            if (Date.now() - startTime > maxWaitMs) {
+              throw new Error(isRtl ? 'استغرقت معالجة الذكاء الاصطناعي وقتاً أطول من المتوقع.' : 'AI separation timed out.');
+            }
+
+            await new Promise(res => setTimeout(res, 2500));
+
+            const statusResp = await fetch(`/api/ai/job-status/${job_id}`);
+            if (!statusResp.ok) continue;
+
+            const job = await statusResp.json();
+
+            if (job.status === 'completed') {
+              isDone = true;
+              break;
+            }
+
+            if (job.status === 'failed') {
+              throw new Error(job.error || (isRtl ? 'فشلت معالجة الصوت في السيرفر.' : 'Server separation failed.'));
+            }
+
+            const jobProgress = job.progress || 20;
+            const exportPct = Math.round(12 + (jobProgress / 100) * 10);
+            const stepText = job.step || (isRtl ? `جاري عزل الصوت ومسح الدفوف بالذكاء الاصطناعي... ${jobProgress}%` : `AI Separating... ${jobProgress}%`);
+            onProgress(stepText, exportPct);
+          }
+
+          onProgress(isRtl ? 'جاري استلام مسار الصوت النقي ودمجه مع الفيديو...' : 'Downloading clean studio vocal track...', 22);
+
+          const downloadResp = await fetch(`/api/ai/job-download/${job_id}`);
+          if (!downloadResp.ok) {
+            throw new Error(`Failed to download clean audio stem: HTTP ${downloadResp.status}`);
+          }
+
+          const separatedAudioBlob = await downloadResp.blob();
           const cleanStemName = `stem_clean_${i}_${Date.now()}.wav`;
           await ffmpeg.writeFile(cleanStemName, await fetchFile(separatedAudioBlob));
           activeFFFiles.push(cleanStemName);
 
           // Replace audio in raw file with the clean AI stem
           const cleanMuxedName = `clean_mux_${i}_${Date.now()}.mp4`;
-          onProgress(isRtl ? 'جاري دمج مسار الصوت النقي مع الفيديو...' : 'Muxing clean AI audio into video...', 20);
+          onProgress(isRtl ? 'جاري دمج مسار الصوت النقي مع الفيديو...' : 'Muxing clean AI audio into video...', 23);
           await ffmpeg.exec([
             '-i', rawName,
             '-i', cleanStemName,
@@ -443,10 +486,11 @@ export async function processVideo(
 
           fileToFFName.set(pFile.id, cleanMuxedName);
           activeFFFiles.push(cleanMuxedName);
-          onProgress(isRtl ? 'تم عزل الصوت ومسح الموسيقى والدف بالذكاء الاصطناعي بنجاح!' : 'AI separation completed successfully!', 22);
-        } catch (aiErr) {
-          console.warn('[AI Separation Warning] Fallback to DSP filter:', aiErr);
-          onProgress(isRtl ? 'تعذر عزل الصوت عبر السيرفر، تم التبديل إلى فلتر التنقية المحلي...' : 'Server AI unavailable, falling back to local DSP filter...', 15);
+          onProgress(isRtl ? 'تم عزل الصوت ومسح الموسيقى والدف بنجاح 100%!' : 'AI separation completed successfully!', 25);
+        } catch (aiErr: any) {
+          console.error('[AI Separation Error]', aiErr);
+          const errorMsg = aiErr?.message || (isRtl ? 'تعذر إتمام عزل الصوت بالذكاء الاصطناعي.' : 'AI Vocal Isolation failed.');
+          throw new Error(errorMsg);
         }
       }
     }

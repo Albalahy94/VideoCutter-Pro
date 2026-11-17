@@ -192,4 +192,129 @@ class AIController extends Controller
             'Cross-Origin-Resource-Policy' => 'cross-origin'
         ]);
     }
+
+    /**
+     * Start an asynchronous background AI separation job.
+     * Returns job_id immediately so the browser never experiences HTTP timeouts.
+     */
+    public function startAsyncSeparation(Request $request)
+    {
+        $request->validate([
+            'audio' => 'required|file|max:204800', // 200MB max
+            'stem' => 'nullable|string|in:vocals,instrumental,both',
+            'model' => 'nullable|string'
+        ]);
+
+        $stem = $request->input('stem', 'vocals');
+        $model = $request->input('model', 'UVR-MDX-NET-Inst_HQ_3.onnx');
+        $file = $request->file('audio');
+
+        $jobId = 'job_' . bin2hex(random_bytes(8));
+        $jobDir = storage_path('app/ai_jobs/' . $jobId);
+        if (!file_exists($jobDir)) {
+            mkdir($jobDir, 0775, true);
+        }
+
+        $extension = $file->getClientOriginalExtension() ?: 'wav';
+        $file->move($jobDir, 'input.' . $extension);
+
+        $statusData = [
+            'job_id' => $jobId,
+            'status' => 'processing',
+            'progress' => 5,
+            'step' => 'تم استلام الملف وجاري بدء المعالجة في السيرفر...',
+            'error' => null,
+            'output_file' => null,
+            'created_at' => time(),
+            'updated_at' => time()
+        ];
+        file_put_contents($jobDir . '/status.json', json_encode($statusData, JSON_UNESCAPED_UNICODE));
+
+        // Locate python
+        $pythonCandidates = [
+            base_path('venv/bin/python'),
+            '/var/www/videocutterpro/venv/bin/python',
+            'python3'
+        ];
+        $pythonBin = 'python3';
+        foreach ($pythonCandidates as $cand) {
+            if (file_exists($cand)) {
+                $pythonBin = $cand;
+                break;
+            }
+        }
+
+        $scriptPath = base_path('scripts/process_job.py');
+        if (!file_exists($scriptPath)) {
+            $scriptPath = '/var/www/videocutterpro/scripts/process_job.py';
+        }
+
+        $escapedJobDir = escapeshellarg($jobDir);
+        $escapedStem = escapeshellarg($stem);
+        $escapedModel = escapeshellarg($model);
+        $logFile = escapeshellarg($jobDir . '/worker.log');
+
+        $cmd = "nohup {$pythonBin} " . escapeshellarg($scriptPath) . " --job_dir {$escapedJobDir} --stem {$escapedStem} --model {$escapedModel} > {$logFile} 2>&1 &";
+
+        Log::info('Dispatching async AI separation job', ['job_id' => $jobId, 'cmd' => $cmd]);
+        putenv('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
+        exec($cmd);
+
+        return response()->json([
+            'success' => true,
+            'job_id' => $jobId,
+            'status' => 'processing'
+        ]);
+    }
+
+    /**
+     * Poll status of an async AI separation job.
+     */
+    public function getJobStatus($jobId)
+    {
+        $jobId = basename($jobId);
+        $jobDir = storage_path('app/ai_jobs/' . $jobId);
+        $statusFile = $jobDir . '/status.json';
+
+        if (!file_exists($statusFile)) {
+            return response()->json(['status' => 'not_found'], 404);
+        }
+
+        $content = file_get_contents($statusFile);
+        $data = json_decode($content, true);
+
+        return response()->json($data ?: ['status' => 'processing', 'progress' => 10]);
+    }
+
+    /**
+     * Download completed clean stem for an async AI job.
+     */
+    public function downloadJobOutput($jobId)
+    {
+        $jobId = basename($jobId);
+        $jobDir = storage_path('app/ai_jobs/' . $jobId);
+        $statusFile = $jobDir . '/status.json';
+
+        if (!file_exists($statusFile)) {
+            abort(404, 'Job not found');
+        }
+
+        $data = json_decode(file_get_contents($statusFile), true);
+        if (($data['status'] ?? '') !== 'completed') {
+            abort(400, 'Job not completed yet');
+        }
+
+        $outputFileName = $data['output_file'] ?? 'clean_vocals.wav';
+        $outputPath = $jobDir . '/' . $outputFileName;
+
+        if (!file_exists($outputPath)) {
+            abort(404, 'Clean audio file not found on server');
+        }
+
+        return response()->download($outputPath, 'clean_vocals.wav', [
+            'Content-Type' => 'audio/wav',
+            'Access-Control-Allow-Origin' => '*',
+            'Cross-Origin-Resource-Policy' => 'cross-origin'
+        ]);
+    }
 }

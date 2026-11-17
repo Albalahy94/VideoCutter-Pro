@@ -19,6 +19,8 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/app/ai_jobs
+/storage/app/ai_separation
 /vendor
 /scratch
 Homestead.json
