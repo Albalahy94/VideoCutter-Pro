@@ -283,7 +283,29 @@ class AIController extends Controller
         $content = file_get_contents($statusFile);
         $data = json_decode($content, true);
 
-        return response()->json($data ?: ['status' => 'processing', 'progress' => 10]);
+        if (!$data) {
+            return response()->json(['status' => 'processing', 'progress' => 10]);
+        }
+
+        // Watchdog: If status is processing, ensure worker PID is alive
+        if (($data['status'] ?? '') === 'processing') {
+            $pid = $data['pid'] ?? null;
+            if ($pid && !file_exists("/proc/{$pid}")) {
+                // If it died, check if clean_vocals was already generated
+                if (file_exists($jobDir . '/clean_vocals.wav')) {
+                    $data['status'] = 'completed';
+                    $data['progress'] = 100;
+                    $data['output_file'] = 'clean_vocals.wav';
+                    $data['step'] = 'اكتمل عزل الصوت ومسح الموسيقى والدف بنجاح!';
+                } else {
+                    $data['status'] = 'failed';
+                    $data['error'] = 'توقف محرك المعالجة في السيرفر بشكل مفاجئ.';
+                }
+                file_put_contents($statusFile, json_encode($data, JSON_UNESCAPED_UNICODE));
+            }
+        }
+
+        return response()->json($data);
     }
 
     /**
