@@ -333,8 +333,11 @@ class AIController extends Controller
             abort(404, 'Clean audio file not found on server');
         }
 
-        return response()->download($outputPath, 'clean_vocals.wav', [
+        // Serve directly via Nginx X-Accel-Redirect (zero-copy, kernel sendfile, non-blocking)
+        return response('', 200, [
             'Content-Type' => 'audio/wav',
+            'Content-Disposition' => 'attachment; filename="clean_vocals.wav"',
+            'X-Accel-Redirect' => '/ai-storage-internal/' . $jobId . '/' . $outputFileName,
             'Access-Control-Allow-Origin' => '*',
             'Cross-Origin-Resource-Policy' => 'cross-origin'
         ]);

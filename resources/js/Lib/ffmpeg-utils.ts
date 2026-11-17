@@ -457,14 +457,37 @@ export async function processVideo(
             onProgress(stepText, exportPct);
           }
 
-          onProgress(isRtl ? 'جاري استلام مسار الصوت النقي ودمجه مع الفيديو...' : 'Downloading clean studio vocal track...', 22);
+          // Resilient download with 3 retries in case of minor network jitter
+          let separatedAudioBlob: Blob | null = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const attemptLabel = attempt > 1 
+                ? (isRtl ? `جاري استلام مسار الصوت النقي (محاولة ${attempt})...` : `Downloading clean vocal track (attempt ${attempt})...`)
+                : (isRtl ? 'جاري استلام مسار الصوت النقي ودمجه مع الفيديو...' : 'Downloading clean studio vocal track...');
+              onProgress(attemptLabel, 22);
 
-          const downloadResp = await fetch(`/api/ai/job-download/${job_id}`);
-          if (!downloadResp.ok) {
-            throw new Error(`Failed to download clean audio stem: HTTP ${downloadResp.status}`);
+              const downloadResp = await fetch(`/api/ai/job-download/${job_id}`);
+              if (!downloadResp.ok) {
+                throw new Error(`HTTP ${downloadResp.status}`);
+              }
+
+              separatedAudioBlob = await downloadResp.blob();
+              if (separatedAudioBlob && separatedAudioBlob.size > 1000) {
+                break;
+              }
+            } catch (dlErr: any) {
+              console.warn(`[Download Attempt ${attempt} Failed]:`, dlErr);
+              if (attempt === 3) {
+                throw new Error(isRtl ? 'تعذر استلام مسار الصوت المعزول بسبب انقطاع الاتصال. يرجى إعادة المحاولة.' : `Failed to download isolated audio: ${dlErr?.message || 'Network error'}`);
+              }
+              await new Promise(r => setTimeout(r, 2000));
+            }
           }
 
-          const separatedAudioBlob = await downloadResp.blob();
+          if (!separatedAudioBlob) {
+            throw new Error(isRtl ? 'ملف الصوت المعزول فارغ أو تعذر تحميله.' : 'Isolated audio file is empty.');
+          }
+
           const cleanStemName = `stem_clean_${i}_${Date.now()}.wav`;
           await ffmpeg.writeFile(cleanStemName, await fetchFile(separatedAudioBlob));
           activeFFFiles.push(cleanStemName);
