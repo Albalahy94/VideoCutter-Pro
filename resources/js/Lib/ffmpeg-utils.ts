@@ -404,31 +404,54 @@ export async function processVideo(
           const audioBlob = new Blob([rawAudioData], { type: 'audio/wav' });
           await ffmpeg.deleteFile(audioExtractName).catch(() => {});
 
-          onProgress(isRtl ? 'جاري رفع الصوت وبدء عزل الموسيقى والدف والطبول بالذكاء الاصطناعي...' : 'Uploading audio to background AI separation queue...', 12);
+          // 1. Resilient Upload with auto-retry up to 5 attempts
+          let job_id: string | null = null;
+          const maxUploadAttempts = 5;
+          for (let upAttempt = 1; upAttempt <= maxUploadAttempts; upAttempt++) {
+            try {
+              const uploadMsg = upAttempt > 1
+                ? (isRtl ? `جاري إعادة رفع مسار الصوت إلى السيرفر (محاولة ${upAttempt} من ${maxUploadAttempts})...` : `Retrying audio upload (attempt ${upAttempt} of ${maxUploadAttempts})...`)
+                : (isRtl ? 'جاري رفع مسار الصوت وبدء عزل الموسيقى والدف والطبول بالذكاء الاصطناعي...' : 'Uploading audio to background AI separation queue...');
+              onProgress(uploadMsg, 12);
 
-          const formData = new FormData();
-          formData.append('audio', audioBlob, 'input.wav');
-          formData.append('stem', 'vocals');
-          formData.append('model', 'UVR-MDX-NET-Inst_HQ_3.onnx');
+              const formData = new FormData();
+              formData.append('audio', audioBlob, 'input.wav');
+              formData.append('stem', 'vocals');
+              formData.append('model', 'UVR-MDX-NET-Inst_HQ_3.onnx');
 
-          const startResp = await fetch('/api/ai/separate-audio-async', {
-            method: 'POST',
-            body: formData,
-          });
+              const startResp = await fetch('/api/ai/separate-audio-async', {
+                method: 'POST',
+                body: formData,
+              });
 
-          if (!startResp.ok) {
-            throw new Error(`AI Separation init failed: HTTP ${startResp.status}`);
+              if (!startResp.ok) {
+                throw new Error(`HTTP ${startResp.status}`);
+              }
+
+              const data = await startResp.json();
+              job_id = data.job_id;
+              if (job_id) break;
+            } catch (upErr: any) {
+              console.warn(`[Upload Attempt ${upAttempt} Failed]:`, upErr);
+              if (upAttempt === maxUploadAttempts) {
+                throw new Error(isRtl ? 'تعذر رفع مسار الصوت إلى السيرفر بسبب انقطاع الاتصال. يرجى التحقق من الإنترنت وإعادة المحاولة.' : 'Failed to upload audio due to network disconnection.');
+              }
+              onProgress(isRtl ? 'انقطع الاتصال مؤقتاً أثناء الرفع، جاري الانتظار وإعادة المحاولة تلقائياً...' : 'Temporary connection drop during upload, waiting to auto-retry...', 12);
+              await new Promise(r => setTimeout(r, 3000));
+            }
           }
 
-          const { job_id } = await startResp.json();
           if (!job_id) {
-            throw new Error('لم يتم استلام معرف المهمة من خادم الذكاء الاصطناعي.');
+            throw new Error(isRtl ? 'لم يتم استلام معرف المهمة من خادم الذكاء الاصطناعي.' : 'Invalid job ID from AI server.');
           }
 
-          // Poll job status until completed
+          // 2. Resilient Polling: Never aborts on internet disconnection!
+          // The server is processing the AI job independently in the background.
+          // If internet drops, we wait and keep polling until connection restores.
           const startTime = Date.now();
           const maxWaitMs = 1800000; // 30 minutes max
           let isDone = false;
+          let currentJobProgress = 20;
 
           while (!isDone) {
             if (Date.now() - startTime > maxWaitMs) {
@@ -437,10 +460,25 @@ export async function processVideo(
 
             await new Promise(res => setTimeout(res, 2500));
 
-            const statusResp = await fetch(`/api/ai/job-status/${job_id}`);
-            if (!statusResp.ok) continue;
+            let job: any = null;
+            try {
+              const statusResp = await fetch(`/api/ai/job-status/${job_id}`);
+              if (statusResp.ok) {
+                job = await statusResp.json();
+              }
+            } catch (netErr) {
+              console.warn('[Network fluctuation during status poll]:', netErr);
+              const exportPct = Math.round(12 + (currentJobProgress / 100) * 10);
+              onProgress(isRtl 
+                ? 'انقطع اتصال الإنترنت مؤقتاً، السيرفر يواصل المعالجة وجاري انتظار عودة الاتصال...' 
+                : 'Temporary network loss, server continues processing. Waiting to reconnect...', 
+                exportPct
+              );
+              await new Promise(res => setTimeout(res, 3000));
+              continue;
+            }
 
-            const job = await statusResp.json();
+            if (!job) continue;
 
             if (job.status === 'completed') {
               isDone = true;
@@ -451,18 +489,19 @@ export async function processVideo(
               throw new Error(job.error || (isRtl ? 'فشلت معالجة الصوت في السيرفر.' : 'Server separation failed.'));
             }
 
-            const jobProgress = job.progress || 20;
-            const exportPct = Math.round(12 + (jobProgress / 100) * 10);
-            const stepText = job.step || (isRtl ? `جاري عزل الصوت ومسح الدفوف بالذكاء الاصطناعي... ${jobProgress}%` : `AI Separating... ${jobProgress}%`);
+            currentJobProgress = job.progress || currentJobProgress;
+            const exportPct = Math.round(12 + (currentJobProgress / 100) * 10);
+            const stepText = job.step || (isRtl ? `جاري عزل الصوت ومسح الدفوف بالذكاء الاصطناعي... ${currentJobProgress}%` : `AI Separating... ${currentJobProgress}%`);
             onProgress(stepText, exportPct);
           }
 
-          // Resilient download with 3 retries in case of minor network jitter
+          // 3. Resilient Download with up to 10 retries in case of minor network jitter
           let separatedAudioBlob: Blob | null = null;
-          for (let attempt = 1; attempt <= 3; attempt++) {
+          const maxDlAttempts = 10;
+          for (let attempt = 1; attempt <= maxDlAttempts; attempt++) {
             try {
               const attemptLabel = attempt > 1 
-                ? (isRtl ? `جاري استلام مسار الصوت النقي (محاولة ${attempt})...` : `Downloading clean vocal track (attempt ${attempt})...`)
+                ? (isRtl ? `جاري استئناف استلام مسار الصوت النقي (محاولة ${attempt} من ${maxDlAttempts})...` : `Resuming vocal track download (attempt ${attempt} of ${maxDlAttempts})...`)
                 : (isRtl ? 'جاري استلام مسار الصوت النقي ودمجه مع الفيديو...' : 'Downloading clean studio vocal track...');
               onProgress(attemptLabel, 22);
 
@@ -477,10 +516,11 @@ export async function processVideo(
               }
             } catch (dlErr: any) {
               console.warn(`[Download Attempt ${attempt} Failed]:`, dlErr);
-              if (attempt === 3) {
-                throw new Error(isRtl ? 'تعذر استلام مسار الصوت المعزول بسبب انقطاع الاتصال. يرجى إعادة المحاولة.' : `Failed to download isolated audio: ${dlErr?.message || 'Network error'}`);
+              if (attempt === maxDlAttempts) {
+                throw new Error(isRtl ? 'تعذر استلام مسار الصوت المعزول بعد عدة محاولات بسبب انقطاع الاتصال. يرجى التحقق من الإنترنت والمحاولة ثانية.' : `Failed to download isolated audio: ${dlErr?.message || 'Network error'}`);
               }
-              await new Promise(r => setTimeout(r, 2000));
+              onProgress(isRtl ? 'تذبذب في الاتصال أثناء التنزيل، جاري إعادة المحاولة تلقائياً...' : 'Network hiccup during download, retrying automatically...', 22);
+              await new Promise(r => setTimeout(r, 3000));
             }
           }
 
