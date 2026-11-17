@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Play, Pause, Volume2, VolumeX, Upload, Film, RotateCcw, RotateCw } from 'lucide-react'
+import { Play, Pause, Volume2, VolumeX, Upload, Film, RotateCcw, RotateCw, Link2 } from 'lucide-react'
 import { WaveformCanvas } from './WaveformCanvas'
 import { secondsToTime, formatDuration } from '../../Lib/time-utils'
 import type { Segment, ProcessingMode, AspectRatio } from '../../types'
@@ -28,6 +28,7 @@ interface VideoPlayerProps {
   showSafeZones?: boolean
   backgroundMusic?: File | null
   bgMusicVolume?: number
+  onImportUrl?: () => void
 }
 
 const modeColor: Record<ProcessingMode, string> = {
@@ -42,7 +43,8 @@ export function VideoPlayer({
   onFileLoad, onTimeUpdate, onPlay, onPause,
   onToggleMute, onSeek, onAdd, videoRef,
   aspectRatio, showSafeZones,
-  backgroundMusic, bgMusicVolume = 1
+  backgroundMusic, bgMusicVolume = 1,
+  onImportUrl
 }: VideoPlayerProps) {
   const progressRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -340,16 +342,32 @@ export function VideoPlayer({
                 {isRtl ? 'MP4, MKV, AVI, MOV, WebM — معالجة محلية بالكامل' : 'MP4, MKV, AVI, MOV, WebM — processed locally in your browser'}
               </p>
             </div>
-            <span
-              className="text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-200"
-              style={{
-                background: 'var(--accent-glow)',
-                color: 'var(--accent-light)',
-                border: '1px solid var(--accent-light)',
-              }}
-            >
-              {isRtl ? 'تصفح الملفات' : 'Browse files'}
-            </span>
+            <div className="flex items-center gap-3">
+              <span
+                className="text-xs px-4 py-2 rounded-full font-bold transition-all duration-200 shadow-sm cursor-pointer"
+                style={{
+                  background: 'var(--accent-glow)',
+                  color: 'var(--accent-light)',
+                  border: '1px solid var(--accent-light)',
+                }}
+              >
+                {isRtl ? 'تصفح من جهازك' : 'Browse files'}
+              </span>
+
+              {onImportUrl && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onImportUrl();
+                  }}
+                  className="text-xs px-4 py-2 rounded-full font-bold transition-all duration-200 flex items-center gap-1.5 shadow-sm bg-accent hover:bg-accent-hover text-white"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'استيراد من رابط' : 'Import from URL'}</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
         <input

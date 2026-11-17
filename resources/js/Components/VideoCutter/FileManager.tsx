@@ -1,4 +1,4 @@
-import { Film, Trash2, GripVertical, Plus, CheckCircle, LayoutGrid, ListPlus } from 'lucide-react'
+import { Film, Trash2, GripVertical, Plus, CheckCircle, LayoutGrid, ListPlus, Link2 } from 'lucide-react'
 import { ProjectFile } from '../../types'
 import { clsx } from 'clsx'
 import { useLanguage } from '../../Hooks/useLanguage'
@@ -11,6 +11,7 @@ interface FileManagerProps {
   onFileRemove: (id: string) => void
   onAddMore: () => void
   onAddAllAsSegments?: () => void
+  onImportUrl?: () => void
   disabled?: boolean
 }
 
@@ -21,6 +22,7 @@ export function FileManager({
   onFileRemove,
   onAddMore,
   onAddAllAsSegments,
+  onImportUrl,
   disabled
 }: FileManagerProps) {
   const { isRtl } = useLanguage()
@@ -33,6 +35,17 @@ export function FileManager({
            {isRtl ? 'قائمة الفيديوهات' : 'Video Playlist'}
         </h3>
         <div className="flex items-center gap-2">
+          {onImportUrl && (
+            <button
+              onClick={onImportUrl}
+              disabled={disabled}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/15 border border-accent/30 text-accent hover:bg-accent/25 transition-all text-[11px] font-bold shadow-sm"
+              title={isRtl ? 'استيراد فيديو من رابط (YouTube, TikTok, Facebook...)' : 'Import video from URL (YouTube, TikTok, Facebook...)'}
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>{isRtl ? 'رابط' : 'URL'}</span>
+            </button>
+          )}
           {files.length > 0 && onAddAllAsSegments && (
             <button
               onClick={(e) => { e.stopPropagation(); onAddAllAsSegments(); }}
@@ -48,7 +61,7 @@ export function FileManager({
             onClick={onAddMore}
             disabled={disabled}
             className="p-1.5 rounded-lg bg-bg-elevated border border-bg-border text-text-secondary hover:text-accent hover:border-accent/40 transition-all shadow-sm"
-            title={isRtl ? 'إضافة فيديو جديد' : 'Add new video'}
+            title={isRtl ? 'إضافة فيديو من الجهاز' : 'Add video from computer'}
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -57,9 +70,33 @@ export function FileManager({
 
       <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
         {files.length === 0 ? (
-          <div className="py-8 flex flex-col items-center gap-2 text-text-muted border-2 border-dashed border-bg-border rounded-xl">
-            <Plus className="w-8 h-8 opacity-20" />
-            <p className="text-xs">{isRtl ? 'لا توجد فيديوهات بعد' : 'No videos added'}</p>
+          <div className="py-8 px-4 flex flex-col items-center gap-3 text-text-muted border-2 border-dashed border-bg-border rounded-2xl bg-bg-elevated/30">
+            <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+              <Plus className="w-5 h-5" />
+            </div>
+            <p className="text-xs text-center font-medium">{isRtl ? 'لا توجد فيديوهات في المشروع بعد' : 'No videos in project yet'}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                type="button"
+                onClick={onAddMore}
+                disabled={disabled}
+                className="px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-[11px] font-bold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{isRtl ? 'من الجهاز' : 'From Device'}</span>
+              </button>
+              {onImportUrl && (
+                <button
+                  type="button"
+                  onClick={onImportUrl}
+                  disabled={disabled}
+                  className="px-3 py-1.5 rounded-xl bg-bg-card border border-accent/40 text-accent hover:bg-accent/10 text-[11px] font-bold transition-all flex items-center gap-1.5"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'من رابط' : 'From URL'}</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           files.map((item, index) => {

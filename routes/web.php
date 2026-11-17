@@ -39,6 +39,12 @@ Route::post('/api/ai/separate-audio-async', [App\Http\Controllers\AIController::
 Route::get('/api/ai/job-status/{jobId}', [App\Http\Controllers\AIController::class, 'getJobStatus']);
 Route::get('/api/ai/job-download/{jobId}', [App\Http\Controllers\AIController::class, 'downloadJobOutput']);
 
+// Video URL Import (YouTube, TikTok, Facebook, Instagram, Twitter/X, etc.)
+Route::post('/api/video/import-info', [App\Http\Controllers\VideoImportController::class, 'fetchInfo']);
+Route::post('/api/video/import-start', [App\Http\Controllers\VideoImportController::class, 'startDownload']);
+Route::get('/api/video/import-status/{jobId}', [App\Http\Controllers\VideoImportController::class, 'getStatus']);
+Route::get('/api/video/import-download/{jobId}', [App\Http\Controllers\VideoImportController::class, 'downloadFile']);
+
 // Socialite - Google Login
 Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');
 Route::get('/auth/google/callback', [App\Http\Controllers\Auth\SocialiteController::class, 'callback'])->name('google.callback');

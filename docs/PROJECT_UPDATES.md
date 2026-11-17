@@ -73,6 +73,36 @@
 
 ---
 
+### 📅 تحديث: 17 نوفمبر 2026 (تحديث مسائي - النسخة الشاملة v2.1)
+#### 1. إطلاق ميزة استيراد وتحميل الفيديوهات من أي رابط (YouTube, TikTok, Facebook, Instagram, Twitter/X والمزيد)
+* **طلب المستخدم الأساسي**:
+  * "هل نقدر نضيف أننا نحط رابط فيديو سواء يوتيوب أو فيس أو انستاجرام أو تيك توك أو أي منصة تانية ونتعامل معاه ونحمله ونعدل عليه ونظبطه؟"
+  * "تمام ظبط كله بدون نقص".
+* **التنفيذ الفني الشامل والمجاني 100% (Zero Third-Party Subscriptions)**:
+  1. **محرك التحميل على السيرفر (yt-dlp Engine + Deno Runtime)**:
+     * تثبيت حزمة `yt-dlp` الحديثة داخل البيئة الافتراضية على الخادم (`/var/www/videocutterpro/venv`).
+     * تثبيت بيئة تشغيل جافاسكريبت `Deno 2.9.8` في مسار النظام `/usr/local/bin/deno` وتفعيل مكونات `ejs:github` لفك تشفير وتخطي التحديات البرمجية لمنصات الفيديو بدون حظر وبسرعة فائقة.
+     * يدعم المحرك أكثر من 1,800 منصة وموقع فيديو بما فيها يوتيوب، تيك توك، فيسبوك، انستغرام، إكس (تويتر)، رديت، وغيرها، أو روابط MP4 المباشرة.
+  2. **بنية الـ API الخلفية في Laravel**:
+     * إنشاء المتحكم [VideoImportController.php](file:///d:/projects/VideoCutterPro-Web/laravel-app/app/Http/Controllers/VideoImportController.php):
+       * `POST /api/video/import-info`: فحص سريع للرابط في ثانيتين واستخراج العنوان، والمدة، وصورة الغلاف (Thumbnail)، واسم القناة والمنصة.
+       * `POST /api/video/import-start`: تشغيل عملية تحميل غير متزامنة في الخلفية بمستويات دقة مختلفة (`auto`, `1080p`, `720p`, `480p`, `audio`).
+       * `GET /api/video/import-status/{jobId}`: مراقبة فورية لنسبة التحميل وسرعة النقل والوقت المتبقي مع نظام حماية Watchdog.
+       * `GET /api/video/import-download/{jobId}`: تسليم ملف الفيديو للمتصفح عبر تقنية Nginx X-Accel-Redirect فائقة السرعة بدون استهلاك ذاكرة السيرفر.
+  3. **عامل المعالجة بالخلفية [download_url_job.py](file:///d:/projects/VideoCutterPro-Web/laravel-app/scripts/download_url_job.py)**:
+     * يدمج الصوت والصورة تلقائياً في ملف MP4 متوافق بنسبة 100% مع متصفحات الويب ومع محرك FFmpeg WebAssembly المحلي.
+  4. **واجهة المستخدم الذكية [UrlImportModal.tsx](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Components/VideoCutter/UrlImportModal.tsx)**:
+     * نافذة مودال حديثة وجذابة تدعم اللصق المباشر من الحافظة (Paste from clipboard).
+     * بطاقة معاينة ذكية للفيديو تظهر مدته وصورة الغلاف واسم المنصة.
+     * شبكة لاختيار الجودة المطلوبة (تلقائي / 1080p / 720p / 480p / صوت فقط).
+     * شريط تقدم حي يُظهر النسبة وسرعة التحميل والوقت المتبقي.
+     * مقاومة تامة لتقلبات الشبكة: في حال انقطاع النت أثناء التحميل، يعيد المتصفح الاستعلام دون فقدان الملف.
+  5. **الربط المباشر مع محرر الفيديو**:
+     * إضافة زر "استيراد من رابط" في منطقة إفلات الفيديو المركزية [VideoPlayer.tsx](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Components/VideoCutter/VideoPlayer.tsx) وفي قائمة الفيديوهات [FileManager.tsx](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Components/VideoCutter/FileManager.tsx).
+     * بمجرد انتهاء التحميل، يتحول الملف تلقائياً إلى كائن `ProjectFile` داخل المتصفح، ويظهر مباشرة على التايم لاين والمشغل، جاهزاً للقص، والتقطيع، ونزع الموسيقى والدف، وتغيير الأبعاد، والتصدير.
+
+---
+
 ### 📅 تحديث: 17 نوفمبر 2026 (تحديث مسائي - النسخة المستقرة والمجانية 100%)
 #### 1. بنية الطابور الخلفي غير المتزامن (Async Background Queue + Polling) لمنع أي انقطاع
 * **المشكلة التي تم حلها**:

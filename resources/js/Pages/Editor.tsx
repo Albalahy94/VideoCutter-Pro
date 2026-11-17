@@ -9,6 +9,7 @@ import { EffectsSelector } from '../Components/VideoCutter/EffectsSelector';
 import { SegmentList } from '../Components/VideoCutter/SegmentList';
 import { ProcessingPanel } from '../Components/VideoCutter/ProcessingPanel';
 import { SmartImportModal } from '../Components/VideoCutter/SmartImportModal';
+import { UrlImportModal } from '../Components/VideoCutter/UrlImportModal';
 import { OnboardingModal } from '../Components/VideoCutter/OnboardingModal';
 import { FileManager } from '../Components/VideoCutter/FileManager';
 import { Timeline } from '../Components/VideoCutter/Timeline';
@@ -45,6 +46,7 @@ export default function Editor({ auth }: Props) {
   const [isMuted, setIsMuted] = useState(false);
   const [inPoint, setInPoint] = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [showUrlImport, setShowUrlImport] = useState(false);
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info', persistent?: boolean }[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -414,6 +416,7 @@ export default function Editor({ auth }: Props) {
               }}
               onSeek={seek}
               onAdd={project.addSegment}
+              onImportUrl={() => setShowUrlImport(true)}
             />
             <Timeline
               segments={project.segments}
@@ -465,6 +468,7 @@ export default function Editor({ auth }: Props) {
                     onFileRemove={project.removeFile}
                     onAddMore={handleAddMore}
                     onAddAllAsSegments={handleAddAllFilesAsSegments}
+                    onImportUrl={() => setShowUrlImport(true)}
                     disabled={ffmpeg.isProcessing}
                   />
               )}
@@ -727,6 +731,15 @@ export default function Editor({ auth }: Props) {
       </main>
 
       <SmartImportModal isOpen={showImport} duration={duration} onClose={() => setShowImport(false)} onImport={project.setSegmentsAll} />
+
+      <UrlImportModal
+        isOpen={showUrlImport}
+        onClose={() => setShowUrlImport(false)}
+        onVideoImported={(file, d) => {
+          handleFileLoad(file, d);
+          setActiveTab('cut');
+        }}
+      />
 
       <OnboardingModal
         isOpen={showOnboarding}
