@@ -49,7 +49,7 @@ def main():
             "output_format": "WAV",
         }
         if selected_model == "htdemucs_ft.yaml" and args.stem == "vocals":
-            kwargs["single_stem"] = "Vocals"
+            kwargs["output_single_stem"] = "Vocals"
 
         separator = Separator(**kwargs)
         separator.load_model(model_filename=selected_model)
@@ -65,6 +65,10 @@ def main():
                 vocals_file = full_path
             elif "instrumental" in lower_name or "instr" in lower_name:
                 instrumental_file = full_path
+
+        # Fallback if single stem was used
+        if args.stem == "vocals" and not vocals_file and output_files:
+            vocals_file = os.path.join(args.output_dir, output_files[0])
 
         result = {
             "success": True,

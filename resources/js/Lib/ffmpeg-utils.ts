@@ -383,12 +383,12 @@ export async function processVideo(
       activeFFFiles.push(bgmFFName);
     }
 
-    // AI Audio Separation Engine (Demucs v4 4-Stem / MDX-Net)
-    if (vocalIsolation === 'remove_music' || vocalIsolation === 'isolate_vocals') {
-      const stemType = vocalIsolation === 'isolate_vocals' ? 'instrumental' : 'vocals';
-      const labelMsg = stemType === 'vocals'
-        ? (isRtl ? 'جاري عزل صوت المتحدث وحذف الموسيقى والدف والطبول 100% بالذكاء الاصطناعي (Demucs)...' : 'Isolating vocals & removing music, duff & drums 100% via AI Demucs...')
-        : (isRtl ? 'جاري عزل الموسيقى وحذف صوت المتحدثين بالذكاء الاصطناعي (AI Karaoke)...' : 'Isolating music & removing vocals with AI Karaoke...');
+    // AI Audio Separation Engine (Demucs v4 4-Stem Deep Isolation)
+    if (vocalIsolation === 'remove_music') {
+      const stemType = 'vocals';
+      const labelMsg = isRtl 
+        ? 'جاري عزل صوت المتحدث وحذف الموسيقى والدف والطبول 100% بالذكاء الاصطناعي (Demucs v4)...' 
+        : 'Isolating vocals & eliminating music, duff & drums 100% via AI Demucs v4...';
       
       onProgress(labelMsg, 8);
 
@@ -410,9 +410,7 @@ export async function processVideo(
           const formData = new FormData();
           formData.append('audio', audioBlob, 'input.wav');
           formData.append('stem', stemType);
-          if (stemType === 'vocals') {
-            formData.append('model', 'htdemucs_ft.yaml');
-          }
+          formData.append('model', 'htdemucs_ft.yaml');
 
           const resp = await fetch('/api/ai/separate-audio', {
             method: 'POST',
@@ -445,7 +443,7 @@ export async function processVideo(
 
           fileToFFName.set(pFile.id, cleanMuxedName);
           activeFFFiles.push(cleanMuxedName);
-          onProgress(isRtl ? 'تم عزل الصوت بالذكاء الاصطناعي بنجاح!' : 'AI separation completed successfully!', 22);
+          onProgress(isRtl ? 'تم عزل الصوت ومسح الموسيقى والدف بالذكاء الاصطناعي بنجاح!' : 'AI separation completed successfully!', 22);
         } catch (aiErr) {
           console.warn('[AI Separation Warning] Fallback to DSP filter:', aiErr);
           onProgress(isRtl ? 'تعذر عزل الصوت عبر السيرفر، تم التبديل إلى فلتر التنقية المحلي...' : 'Server AI unavailable, falling back to local DSP filter...', 15);

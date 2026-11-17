@@ -233,13 +233,11 @@ export function EffectsSelector({
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
             <Mic2 className="w-3 h-3 text-accent-light" />
-            {isRtl ? 'نزع الموسيقى والدف والطبول بالذكاء الاصطناعي (AI Demucs)' : 'AI Vocal & Music Separation'}
+            {isRtl ? 'نزع الموسيقى والدف والطبول (AI Demucs)' : 'AI Music & Drums Removal'}
           </h3>
-          {vocalIsolation !== 'none' && (
+          {vocalIsolation === 'remove_music' && (
             <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-mono font-medium">
-              {vocalIsolation === 'remove_music' 
-                ? (isRtl ? 'كلام نقي 100% (بدون أي موسيقى أو دف أو طبول)' : 'AI Vocals (No Drums/Music)') 
-                : (isRtl ? 'موسيقى فقط (كاريوكي)' : 'Music Only')}
+              {isRtl ? 'كلام نقي 100% (بدون أي موسيقى أو دف أو طبول)' : 'AI Vocals (No Drums/Music)'}
             </span>
           )}
         </div>
@@ -248,18 +246,17 @@ export function EffectsSelector({
             ? 'محرك الذكاء الاصطناعي العميق (Demucs v4): يقوم بعزل صوت الكلام البشري وحذف كل النغمات والآلات الموسيقية، والدفوف والطبول والإيقاعات بنسبة 100% بنقاوة تامة.'
             : 'Deep AI separation (Demucs v4): isolates dialogue and completely eliminates all background music, duff, drums, and percussion with 100% studio clarity.'}
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {([
-            { id: 'none'           , labelEn: 'Original Audio'          , labelAr: 'صوت عادي (الأصلي)'                  , descEn: 'Keep original track'          , descAr: 'المسار الصوتي الأصلي دون تعديل' },
-            { id: 'remove_music'   , labelEn: 'Remove Music & Drums 100%', labelAr: 'نزع الموسيقى والدف والطبول 100%'   , descEn: 'Pure speech without drums'    , descAr: 'كلام نقي ومسح كامل للموسيقى والإيقاعات' },
-            { id: 'isolate_vocals' , labelEn: 'Music Only (Karaoke)'    , labelAr: 'موسيقى فقط (كاريوكي)'               , descEn: 'Music without vocals'         , descAr: 'إبقاء الموسيقى وحذف صوت المتحدث' },
+            { id: 'none'           , labelEn: 'Original Audio'          , labelAr: 'صوت عادي (الأصلي)'                  , descEn: 'Keep original track'          , descAr: 'المسار الصوتي الأصلي للفيديو دون أي تعديل' },
+            { id: 'remove_music'   , labelEn: 'Remove Music & Drums 100%', labelAr: 'نزع الموسيقى والدف والطبول 100%'   , descEn: 'Pure speech without drums'    , descAr: 'عزل كلام المتحدث ومسح كل أنواع الموسيقى والإيقاعات' },
           ] as const).map(opt => (
             <button
               key={opt.id}
               disabled={disabled}
               onClick={() => onVocalIsolationChange(opt.id)}
               className={clsx(
-                'py-2 px-2.5 rounded-xl text-left border transition-all flex flex-col gap-0.5 items-start',
+                'py-2.5 px-3 rounded-xl text-left border transition-all flex flex-col gap-1 items-start',
                 vocalIsolation === opt.id
                   ? 'bg-accent/15 border-accent text-accent shadow-sm shadow-accent/10'
                   : 'bg-bg-elevated border-bg-border text-text-muted hover:bg-bg-border hover:text-text-primary'
@@ -268,7 +265,7 @@ export function EffectsSelector({
               <span className="text-[11px] font-bold">
                 {isRtl ? opt.labelAr : opt.labelEn}
               </span>
-              <span className="text-[9px] opacity-75">
+              <span className="text-[9px] opacity-75 leading-relaxed">
                 {isRtl ? opt.descAr : opt.descEn}
               </span>
             </button>
