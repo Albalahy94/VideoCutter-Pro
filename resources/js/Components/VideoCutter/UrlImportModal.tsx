@@ -28,6 +28,7 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
   const [isChecking, setIsChecking] = useState(false);
   const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [quality, setQuality] = useState<'auto' | '1080p' | '720p' | '480p' | 'audio'>('auto');
+  const [autoSaveToDevice, setAutoSaveToDevice] = useState(true);
   
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -240,6 +241,22 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
 
       const mimeType = quality === 'audio' ? 'audio/mp4' : 'video/mp4';
       const importedFile = new File([videoBlob], finalFileName, { type: mimeType });
+
+      // Automatically save a local copy to user's device (Downloads) if requested
+      if (autoSaveToDevice) {
+        try {
+          const downloadUrl = URL.createObjectURL(videoBlob);
+          const a = document.createElement('a');
+          a.href = downloadUrl;
+          a.download = finalFileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(downloadUrl), 8000);
+        } catch (saveErr) {
+          console.warn('Auto-save to local disk notice:', saveErr);
+        }
+      }
 
       // Probe true video duration from the loaded blob
       let trueDuration = metadata?.duration || completedData?.duration || 0;
@@ -478,6 +495,25 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
                   ))}
                 </div>
               </div>
+
+              {/* Auto-save to device toggle */}
+              <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-accent/5 border border-accent/20 cursor-pointer select-none transition-all hover:bg-accent/10">
+                <input
+                  type="checkbox"
+                  checked={autoSaveToDevice}
+                  onChange={(e) => setAutoSaveToDevice(e.target.checked)}
+                  className="w-4 h-4 rounded border-bg-border text-accent focus:ring-accent/20 cursor-pointer accent-accent"
+                />
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                    <span>💾</span>
+                    <span>{isRtl ? 'حفظ نسخة تلقائياً على جهازي في مجلد التنزيلات (Downloads)' : 'Auto-save a copy to my device (Downloads)'}</span>
+                  </span>
+                  <span className="text-[10px] text-text-muted mt-0.5">
+                    {isRtl ? 'يوفر عليك طلب الرابط ثانية ويضمن بقاء الملف بجهازك مع إخلاء مساحة السيرفر فوراً' : 'Keeps a local copy for instant offline re-use and frees server storage'}
+                  </span>
+                </div>
+              </label>
 
               {/* Action Button */}
               <button
