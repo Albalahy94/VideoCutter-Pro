@@ -12,10 +12,10 @@ else:
         os.environ['PATH'] += ':/usr/bin:/usr/local/bin'
 
 def main():
-    parser = argparse.ArgumentParser(description="AI Audio Vocal/Music Separator")
+    parser = argparse.ArgumentParser(description="AI Audio Vocal/Music/Drums Separator")
     parser.add_argument("--input", required=True, help="Input audio file")
     parser.add_argument("--output_dir", required=True, help="Directory to save separated stems")
-    parser.add_argument("--model", default="UVR-MDX-NET-Inst_HQ_3.onnx", help="Model name")
+    parser.add_argument("--model", default="auto", help="Model name (default: auto -> htdemucs_ft.yaml for vocals, UVR-MDX-NET-Inst_HQ_3.onnx for instrumental)")
     parser.add_argument("--stem", default="vocals", choices=["vocals", "instrumental", "both"], help="Stem to keep")
     args = parser.parse_args()
 
@@ -27,6 +27,14 @@ def main():
     model_dir = os.environ.get("AI_MODELS_DIR", "/var/www/videocutterpro/models")
     os.makedirs(model_dir, exist_ok=True)
 
+    # Determine optimal model: Demucs v4 for vocals to completely eliminate duff, drums, and music
+    selected_model = args.model
+    if selected_model == "auto" or not selected_model:
+        if args.stem == "vocals":
+            selected_model = "htdemucs_ft.yaml"
+        else:
+            selected_model = "UVR-MDX-NET-Inst_HQ_3.onnx"
+
     try:
         from audio_separator.separator import Separator
     except ImportError as e:
@@ -34,15 +42,17 @@ def main():
         sys.exit(1)
 
     try:
-        # Suppress verbose debug logs to stdout so JSON output remains clean
-        separator = Separator(
-            log_level=logging.WARNING,
-            output_dir=args.output_dir,
-            model_file_dir=model_dir,
-            output_format="WAV",
-        )
+        kwargs = {
+            "log_level": logging.WARNING,
+            "output_dir": args.output_dir,
+            "model_file_dir": model_dir,
+            "output_format": "WAV",
+        }
+        if selected_model == "htdemucs_ft.yaml" and args.stem == "vocals":
+            kwargs["single_stem"] = "Vocals"
 
-        separator.load_model(model_filename=args.model)
+        separator = Separator(**kwargs)
+        separator.load_model(model_filename=selected_model)
         output_files = separator.separate(args.input)
 
         vocals_file = None
@@ -60,6 +70,7 @@ def main():
             "success": True,
             "vocals": vocals_file,
             "instrumental": instrumental_file,
+            "model_used": selected_model,
             "all_outputs": [os.path.join(args.output_dir, f) if not os.path.isabs(f) else f for f in output_files]
         }
         print(json.dumps(result))

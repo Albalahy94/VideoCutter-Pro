@@ -233,29 +233,26 @@ export function EffectsSelector({
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
             <Mic2 className="w-3 h-3 text-accent-light" />
-            {isRtl ? 'فصل ونزع الموسيقى / الصوت (بالذكاء الاصطناعي AI)' : 'AI Vocal & Music Separation'}
+            {isRtl ? 'نزع الموسيقى والدف والطبول بالذكاء الاصطناعي (AI Demucs)' : 'AI Vocal & Music Separation'}
           </h3>
           {vocalIsolation !== 'none' && (
             <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-mono font-medium">
-              {vocalIsolation === 'mute_video' 
-                ? (isRtl ? 'صامت' : 'Muted') 
-                : vocalIsolation === 'remove_music' 
-                  ? (isRtl ? 'نزع الموسيقى (AI Studio)' : 'AI Vocal Only') 
-                  : (isRtl ? 'موسيقى فقط (AI Karaoke)' : 'AI Music Only')}
+              {vocalIsolation === 'remove_music' 
+                ? (isRtl ? 'كلام نقي 100% (بدون أي موسيقى أو دف أو طبول)' : 'AI Vocals (No Drums/Music)') 
+                : (isRtl ? 'موسيقى فقط (كاريوكي)' : 'Music Only')}
             </span>
           )}
         </div>
         <p className="text-[10px] text-text-muted leading-relaxed">
           {isRtl
-            ? 'محرك الذكاء الاصطناعي (UVR/MDX-Net) لفصل الترددات بنقاء 100%: اختر نزع الموسيقى تماماً لإبراز صوت المتحدث كأنه في استوديو، أو عزل الموسيقى وحذف الكلام، أو كتم الصوت.'
-            : 'AI Studio separation: remove background music completely to keep clean dialogue, isolate music tracks, or mute audio.'}
+            ? 'محرك الذكاء الاصطناعي العميق (Demucs v4): يقوم بعزل صوت الكلام البشري وحذف كل النغمات والآلات الموسيقية، والدفوف والطبول والإيقاعات بنسبة 100% بنقاوة تامة.'
+            : 'Deep AI separation (Demucs v4): isolates dialogue and completely eliminates all background music, duff, drums, and percussion with 100% studio clarity.'}
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           {([
-            { id: 'none'           , labelEn: 'Normal Audio'    , labelAr: 'صوت عادي'                  , descEn: 'Original track'        , descAr: 'المسار الأصلي' },
-            { id: 'remove_music'   , labelEn: 'AI Vocal Only'   , labelAr: 'نزع الموسيقى (AI Studio)'  , descEn: 'Studio Voice 100%'     , descAr: 'كلام نقي 100%' },
-            { id: 'isolate_vocals' , labelEn: 'AI Music Only'   , labelAr: 'موسيقى فقط (AI Karaoke)'   , descEn: 'Karaoke / Music'       , descAr: 'موسيقى بدون كلام' },
-            { id: 'mute_video'     , labelEn: 'Mute Audio'      , labelAr: 'كتم الصوت نهائياً'         , descEn: 'Silent video'          , descAr: 'فيديو صامت' },
+            { id: 'none'           , labelEn: 'Original Audio'          , labelAr: 'صوت عادي (الأصلي)'                  , descEn: 'Keep original track'          , descAr: 'المسار الصوتي الأصلي دون تعديل' },
+            { id: 'remove_music'   , labelEn: 'Remove Music & Drums 100%', labelAr: 'نزع الموسيقى والدف والطبول 100%'   , descEn: 'Pure speech without drums'    , descAr: 'كلام نقي ومسح كامل للموسيقى والإيقاعات' },
+            { id: 'isolate_vocals' , labelEn: 'Music Only (Karaoke)'    , labelAr: 'موسيقى فقط (كاريوكي)'               , descEn: 'Music without vocals'         , descAr: 'إبقاء الموسيقى وحذف صوت المتحدث' },
           ] as const).map(opt => (
             <button
               key={opt.id}

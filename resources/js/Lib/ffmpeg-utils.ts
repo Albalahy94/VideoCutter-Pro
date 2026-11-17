@@ -131,10 +131,6 @@ export function buildAudioFilter(
   vocalIsolation: VocalIsolationMode,
   audioPreset: AudioPreset
 ): string {
-  if (vocalIsolation === 'mute_video') {
-    return 'volume=0';
-  }
-
   let aFilter = `aresample=async=1,atempo=${videoSpeed},volume=${audioBoost},asetpts=PTS-STARTPTS`;
   if (noiseReduction) {
     aFilter = `afftdn=nf=-25,${aFilter}`;
@@ -387,11 +383,11 @@ export async function processVideo(
       activeFFFiles.push(bgmFFName);
     }
 
-    // AI Audio Separation Engine (UVR / MDX-Net)
+    // AI Audio Separation Engine (Demucs v4 4-Stem / MDX-Net)
     if (vocalIsolation === 'remove_music' || vocalIsolation === 'isolate_vocals') {
       const stemType = vocalIsolation === 'isolate_vocals' ? 'instrumental' : 'vocals';
       const labelMsg = stemType === 'vocals'
-        ? (isRtl ? 'جاري عزل صوت المتحدث وحذف الموسيقى نهائياً بالذكاء الاصطناعي (AI Studio)...' : 'Isolating vocals & removing music with AI Studio...')
+        ? (isRtl ? 'جاري عزل صوت المتحدث وحذف الموسيقى والدف والطبول 100% بالذكاء الاصطناعي (Demucs)...' : 'Isolating vocals & removing music, duff & drums 100% via AI Demucs...')
         : (isRtl ? 'جاري عزل الموسيقى وحذف صوت المتحدثين بالذكاء الاصطناعي (AI Karaoke)...' : 'Isolating music & removing vocals with AI Karaoke...');
       
       onProgress(labelMsg, 8);
@@ -409,11 +405,14 @@ export async function processVideo(
           const audioBlob = new Blob([rawAudioData], { type: 'audio/wav' });
           await ffmpeg.deleteFile(audioExtractName).catch(() => {});
 
-          onProgress(isRtl ? 'جاري فصل الترددات بالذكاء الاصطناعي على السيرفر (UVR 100%)...' : 'Processing audio via AI Studio Separation...', 14);
+          onProgress(isRtl ? 'جاري عزل الطبول والدفوف والموسيقى بالذكاء الاصطناعي (Demucs 4-Stem 100%)...' : 'Processing audio via Demucs 4-Stem AI Engine...', 14);
 
           const formData = new FormData();
           formData.append('audio', audioBlob, 'input.wav');
           formData.append('stem', stemType);
+          if (stemType === 'vocals') {
+            formData.append('model', 'htdemucs_ft.yaml');
+          }
 
           const resp = await fetch('/api/ai/separate-audio', {
             method: 'POST',

@@ -74,15 +74,17 @@ class AIController extends Controller
      */
     public function separateAudio(Request $request)
     {
-        // Increase time limit for AI model processing
-        set_time_limit(300);
+        // Increase time limit for AI model processing (Demucs v4 4-stem deep separation)
+        set_time_limit(600);
 
         $request->validate([
             'audio' => 'required|file|max:153600', // 150MB max
-            'stem' => 'nullable|string|in:vocals,instrumental,both'
+            'stem' => 'nullable|string|in:vocals,instrumental,both',
+            'model' => 'nullable|string'
         ]);
 
         $stem = $request->input('stem', 'vocals');
+        $model = $request->input('model', ($stem === 'vocals' ? 'htdemucs_ft.yaml' : 'UVR-MDX-NET-Inst_HQ_3.onnx'));
         $file = $request->file('audio');
 
         $sessionDir = storage_path('app/ai_separation/' . uniqid('sep_', true));
@@ -129,8 +131,9 @@ class AIController extends Controller
         $escapedInput = escapeshellarg($inputPath);
         $escapedOutput = escapeshellarg($outputDir);
         $escapedStem = escapeshellarg($stem);
+        $escapedModel = escapeshellarg($model);
         putenv('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
-        $command = "{$pythonBin} " . escapeshellarg($scriptPath) . " --input {$escapedInput} --output_dir {$escapedOutput} --stem {$escapedStem} 2>&1";
+        $command = "{$pythonBin} " . escapeshellarg($scriptPath) . " --input {$escapedInput} --output_dir {$escapedOutput} --stem {$escapedStem} --model {$escapedModel} 2>&1";
 
         Log::info('Starting AI audio separation', ['command' => $command]);
 
