@@ -341,6 +341,11 @@ export function VideoPlayer({
               <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                 {isRtl ? 'MP4, MKV, AVI, MOV, WebM — معالجة محلية بالكامل' : 'MP4, MKV, AVI, MOV, WebM — processed locally in your browser'}
               </p>
+              <p className="text-[11px] mt-1.5 text-accent font-medium">
+                {isRtl 
+                  ? '💡 الحجم الموصى به: حتى 2 جيجابايت للملف | المدة: حتى 30 دقيقة لأقصى سلاسة وسرعة' 
+                  : '💡 Recommended size: up to 2 GB per file | Duration: up to 30 mins for optimal speed'}
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <span

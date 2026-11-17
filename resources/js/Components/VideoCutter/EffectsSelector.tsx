@@ -271,6 +271,16 @@ export function EffectsSelector({
             </button>
           ))}
         </div>
+
+        {/* AI Duration & Capacity Notice */}
+        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-accent/5 border border-accent/20 text-[11px] text-text-secondary">
+          <span className="text-accent shrink-0">💡</span>
+          <span className="leading-snug">
+            {isRtl 
+              ? 'المدة الموصى بها للعزل بالذكاء الاصطناعي: حتى 20 دقيقة للمقطع الواحد لضمان أعلى سرعة ونقاء استوديو.' 
+              : 'Recommended duration for AI separation: up to 20 minutes per clip for peak speed & studio fidelity.'}
+          </span>
+        </div>
       </section>
 
       {/* Transitions Section */}

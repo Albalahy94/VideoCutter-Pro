@@ -127,6 +127,27 @@ export default function Editor({ auth }: Props) {
   const handleFileLoad = useCallback((f: File, d: number) => {
     const id = project.addFile(f, d);
     showToast(`${isRtl ? 'تم تحميل الفيديو' : 'Video loaded'}: ${f.name}`, 'success');
+
+    // Friendly capacity notices
+    if (f.size > 2 * 1024 * 1024 * 1024) {
+      setTimeout(() => {
+        showToast(
+          isRtl 
+            ? `تنبيه سعة: حجم الملف كبير (${(f.size / (1024 * 1024 * 1024)).toFixed(1)} جيجابايت). قد يتطلب تصديره وقتاً وذاكرة أكبر.`
+            : `Capacity Notice: Large file (${(f.size / (1024 * 1024 * 1024)).toFixed(1)} GB). Processing may require more browser memory.`,
+          'info'
+        );
+      }, 900);
+    } else if (d > 1800) {
+      setTimeout(() => {
+        showToast(
+          isRtl
+            ? `تنبيه مدة: الفيديو طويل (${Math.round(d / 60)} دقيقة). ننصح بقص المقاطع المستهدفة لضمان أقصى سرعة وأداء سلس.`
+            : `Duration Notice: Long video (${Math.round(d / 60)} min). We recommend trimming target segments for optimal speed.`,
+          'info'
+        );
+      }, 900);
+    }
   }, [project, showToast, isRtl]);
 
   const handleAddMore = useCallback(() => {

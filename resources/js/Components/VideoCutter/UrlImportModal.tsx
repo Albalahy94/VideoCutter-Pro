@@ -95,6 +95,11 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
         throw new Error(data.error || (isRtl ? 'تعذر جلب تفاصيل الفيديو من هذا الرابط.' : 'Could not fetch video info from URL.'));
       }
 
+      // Duration validation: max 2 hours (7200 seconds)
+      if (data.duration && data.duration > 7200) {
+        throw new Error(isRtl ? 'عذراً، مدة الفيديو تتجاوز ساعتين (الحد الأقصى المسموح به للاستيراد هو 120 دقيقة حفاظاً على استقرار السيرفر).' : 'Video exceeds maximum allowed limit of 2 hours.');
+      }
+
       setMetadata(data);
     } catch (err: any) {
       console.error('Fetch info error:', err);
@@ -394,6 +399,18 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
                 </div>
               </div>
 
+              {/* Long video notice if > 30 minutes */}
+              {metadata.duration > 1800 && (
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[11px] font-medium">
+                  <span>⏳</span>
+                  <span>
+                    {isRtl 
+                      ? `هذا المقطع طويل (${metadata.duration_formatted}). قد يستغرق التحميل والتجهيز بضع دقائق إضافية.`
+                      : `Long video (${metadata.duration_formatted}). Processing may take a few extra minutes.`}
+                  </span>
+                </div>
+              )}
+
               {/* Quality Options */}
               <div className="flex flex-col gap-2 pt-2 border-t border-bg-border/60">
                 <span className="text-xs font-semibold text-text-secondary">
@@ -480,6 +497,17 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
               )}
             </div>
           )}
+
+          {/* Footer Limits Notice */}
+          <div className="pt-2 border-t border-bg-border/60 flex items-center justify-between text-[10px] text-text-muted">
+            <span className="flex items-center gap-1">
+              <span>📌</span>
+              <span>{isRtl ? 'الحد الأقصى للمقطع المستورد: ساعتان' : 'Max supported length: 2 hours'}</span>
+            </span>
+            <span>
+              {isRtl ? 'الجودة الموصى بها: 720p أو تلقائي' : 'Recommended: 720p or Auto'}
+            </span>
+          </div>
 
         </div>
 
