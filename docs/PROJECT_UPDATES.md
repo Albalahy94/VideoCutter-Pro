@@ -29,14 +29,20 @@
      * تثبيت نموذج `htdemucs_ft.yaml` على السيرفر، والذي يفصل الصوت إلى 4 مسارات متخصصة مستقلة: (`Vocals`، `Drums`، `Bass`، `Other`).
      * توجيه محرك السيرفر [separate_audio.py](file:///d:/projects/VideoCutterPro-Web/laravel-app/scripts/separate_audio.py) و [AIController.php](file:///d:/projects/VideoCutterPro-Web/laravel-app/app/Http/Controllers/AIController.php) لاستخدام `htdemucs_ft` تلقائياً وبشكل دائم عند طلب مسار الكلام.
      * تقوم الشبكة العصبية بسحب 100% من ضربات الدف، الطبول، الرق، والإيقاعات إلى مسار الـ Drums، ليخرج مسار الـ Vocals خالياً تماماً من أي دف أو طبل أو نوتة موسيقية.
-  2. **إلغاء خيار كتم الصوت (Mute Audio) بناءً على طلب المستخدم**:
-     * تم حذف خيار كتم الصوت نهائياً من الواجهة [EffectsSelector.tsx](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Components/VideoCutter/EffectsSelector.tsx) و [types.ts](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/types.ts) و [ffmpeg-utils.ts](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Lib/ffmpeg-utils.ts).
-     * أصبحت الخيارات الصوتية شديدة الوضوح والمباشرة:
-       * 🔊 **صوت عادي (الأصلي)**: المسار الصوتي كما هو.
-       * 🎙️ **نزع الموسيقى والدف والطبول 100% (AI Demucs)**: عزل الكلام ومسح كل أنواع الموسيقى والإيقاعات.
-       * 🎵 **موسيقى فقط (كاريوكي)**: إبقاء الموسيقى وحذف صوت المتحدث.
+  2. **تبسيط خيارات الصوت إلى خيارين فقط بناءً على طلب المستخدم**:
+     * تم حذف خيار كتم الصوت (Mute) وكذلك خيار "موسيقى فقط (كاريوكي)" نهائياً من الواجهة [EffectsSelector.tsx](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Components/VideoCutter/EffectsSelector.tsx) و [types.ts](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/types.ts) و [ffmpeg-utils.ts](file:///d:/projects/VideoCutterPro-Web/laravel-app/resources/js/Lib/ffmpeg-utils.ts).
+     * أصبحت الخيارات الصوتية محصورة في خيارين مباشرين فقط:
+       * 🔊 **صوت عادي (الأصلي)**: المسار الصوتي كما هو دون أي تعديل.
+       * 🎙️ **نزع الموسيقى والدف والطبول 100% (AI Demucs)**: عزل الكلام ومسح كل أنواع الموسيقى والإيقاعات والطبول والدفوف.
 
-#### 2. دمج محرك الذكاء الاصطناعي لفصل ونزع الموسيقى بنقاء الاستوديو 100% (AI Studio Vocal Remover)
+#### 2. حل إنذار الأمان الخاص بـ GitHub (GitHub Secret Scanning Alert)
+* **المشكلة**: أرسل GitHub تنبيهاً أمنياً بخصوص اكتشاف مفتاح Google API Key في ملف تجارب قديم `scratch/test_gemini.php` تم رفعه سابقاً في commit `93be146`.
+* **الإجراء المتخذ**:
+  1. حذف مجلد `scratch/` بالكامل من مستودع Git (`git rm -r --cached scratch/`).
+  2. إضافة `/scratch` إلى ملف [.gitignore](file:///d:/projects/VideoCutterPro-Web/laravel-app/.gitignore) لمنع رفع أي سكريبتات تجريبية أو بيانات حساسة مستقبلاً.
+  3. عمل Commit و Push فوري إلى GitHub لإزالة الملف من أحدث نسخة للكود.
+
+#### 3. دمج محرك الذكاء الاصطناعي لفصل ونزع الموسيقى بنقاء الاستوديو 100% (AI Studio Vocal Remover)
 * **المشكلة التي تم رصدها والدافع للتطوير**:
   * الفلاتر الترددية الكلاسيكية (DSP filters مثل Lowpass و Highpass و Stereotools) تعتمد على نطاقات التردد العامة؛ وحيث أن الترددات الصوتية البشرية تتداخل عضوياً بنسبة 100% مع الآلات الموسيقية (بين 200Hz و 4000Hz)، فإن الفلاتر التقليدية لا تستطيع حذف الموسيقى دون التأثير على خامة الصوت البشري أو كتمه.
   * طلب المستخدم: **"نزع الموسيقى نهائياً بنسبة 100% كأنها لم تكن موجودة بدون أن يتأثر صوت المتحدث إطلاقاً"**.
