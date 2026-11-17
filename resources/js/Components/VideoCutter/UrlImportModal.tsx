@@ -227,11 +227,49 @@ export function UrlImportModal({ isOpen, onClose, onVideoImported }: UrlImportMo
         throw new Error(isRtl ? 'الملف الناتج فارغ أو غير صالح.' : 'Generated file is empty or corrupted.');
       }
 
+      // Immediately delete file from server storage to free disk space (since browser holds it in memory now)
+      try {
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+        fetch(`/api/video/import-cleanup/${jobId}`, {
+          method: 'POST',
+          headers: { 'X-CSRF-TOKEN': csrfToken }
+        }).catch(e => console.warn('Server cleanup notice:', e));
+      } catch (cleanErr) {
+        // Non-blocking
+      }
+
       const mimeType = quality === 'audio' ? 'audio/mp4' : 'video/mp4';
       const importedFile = new File([videoBlob], finalFileName, { type: mimeType });
-      const videoDuration = metadata?.duration || completedData?.duration || 0;
 
-      onVideoImported(importedFile, videoDuration);
+      // Probe true video duration from the loaded blob
+      let trueDuration = metadata?.duration || completedData?.duration || 0;
+      try {
+        const probeVid = document.createElement('video');
+        probeVid.preload = 'metadata';
+        const blobUrl = URL.createObjectURL(videoBlob);
+        probeVid.src = blobUrl;
+        await new Promise<void>((res) => {
+          probeVid.onloadedmetadata = () => {
+            if (probeVid.duration && !isNaN(probeVid.duration) && probeVid.duration > 0) {
+              trueDuration = probeVid.duration;
+            }
+            URL.revokeObjectURL(blobUrl);
+            res();
+          };
+          probeVid.onerror = () => {
+            URL.revokeObjectURL(blobUrl);
+            res();
+          };
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            res();
+          }, 2500);
+        });
+      } catch (probeErr) {
+        console.warn('Video duration probe skipped:', probeErr);
+      }
+
+      onVideoImported(importedFile, trueDuration);
       onClose();
 
     } catch (err: any) {

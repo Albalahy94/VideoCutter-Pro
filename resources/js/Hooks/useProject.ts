@@ -246,9 +246,11 @@ export function useProject() {
     const id = existing ? existing.id : uuid()
 
     if (!existing) {
-      // We set them separately, but React 18 batches these. 
-      // To be extra safe, we'll ensure files is updated before ID in the next render cycle effectively.
       setFiles(prev => [...prev, { id, file, name: file.name, duration }])
+    } else if (duration > 0 && (!existing.duration || existing.duration <= 0)) {
+      // Update duration and any zero-length segments if true duration is now known
+      setFiles(prev => prev.map(f => f.id === existing.id ? { ...f, duration } : f))
+      setSegments(prev => prev.map(s => (s.fileId === existing.id && (!s.end || s.end <= 0)) ? { ...s, end: duration } : s))
     }
 
     // Explicitly set active ID

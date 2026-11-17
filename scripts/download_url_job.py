@@ -2,7 +2,8 @@
 """
 VideoCutter Pro - Async Video Downloader & URL Importer Worker
 Downloads video/audio from 1800+ platforms (YouTube, TikTok, Facebook, Instagram, Twitter/X, etc.)
-via yt-dlp, tracks progress smoothly, and prepares web-ready MP4/M4A media files.
+via yt-dlp, tracks progress smoothly, ensures web-standard H.264/AAC MP4,
+and computes exact video duration via ffprobe.
 """
 
 import argparse
@@ -10,10 +11,11 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import time
 
-# Ensure system paths & FFmpeg are in PATH
+# Ensure system paths & FFmpeg/ffprobe are in PATH
 if 'PATH' not in os.environ or not os.environ['PATH']:
     os.environ['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 else:
@@ -53,7 +55,7 @@ def update_status(job_dir, status, progress, step="", error=None, output_file=No
         "error": error,
         "output_file": output_file or existing.get("output_file"),
         "title": title or existing.get("title"),
-        "duration": duration if duration is not None else existing.get("duration"),
+        "duration": duration if (duration is not None and duration > 0) else existing.get("duration", 0),
         "file_size": file_size or existing.get("file_size"),
         "speed": speed or existing.get("speed"),
         "eta": eta or existing.get("eta"),
@@ -65,6 +67,85 @@ def update_status(job_dir, status, progress, step="", error=None, output_file=No
     with open(temp_file, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
     os.replace(temp_file, status_file)
+
+def get_file_metadata(file_path):
+    """Extract exact duration and video codec via ffprobe."""
+    duration = 0.0
+    vcodec = "unknown"
+    try:
+        # Get duration
+        dur_cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+        res = subprocess.run(dur_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        if res.returncode == 0 and res.stdout.strip():
+            duration = float(res.stdout.strip())
+    except Exception as e:
+        print(f"ffprobe duration error: {e}")
+
+    try:
+        # Get video codec name
+        codec_cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=codec_name",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+        res = subprocess.run(codec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        if res.returncode == 0 and res.stdout.strip():
+            vcodec = res.stdout.strip().lower()
+    except Exception as e:
+        print(f"ffprobe codec error: {e}")
+
+    return duration, vcodec
+
+def ensure_web_compatible_h264(in_file, job_dir):
+    """
+    If the video is not H.264 (e.g. VP9, AV1, HEVC), convert it to H.264+AAC
+    so it plays seamlessly in all HTML5 web browsers and mobile devices.
+    """
+    duration, vcodec = get_file_metadata(in_file)
+    print(f"Source file info: Codec={vcodec}, Duration={duration}s")
+
+    # If it is already h264/avc1, or audio only, no transcode needed
+    if vcodec in ("h264", "avc", "avc1") or in_file.endswith(".m4a"):
+        return in_file, duration
+
+    print(f"Transcoding {vcodec} to web-standard H.264...")
+    update_status(
+        job_dir,
+        status="processing",
+        progress=95,
+        step="جاري تهيئة ترميز الفيديو ليتوافق 100% مع المتصفح (H.264)..."
+    )
+
+    out_h264 = os.path.join(job_dir, "web_compat_" + os.path.basename(in_file))
+    transcode_cmd = [
+        "ffmpeg", "-y",
+        "-i", in_file,
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "22",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-movflags", "+faststart",
+        out_h264
+    ]
+
+    res = subprocess.run(transcode_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if res.returncode == 0 and os.path.exists(out_h264) and os.path.getsize(out_h264) > 1000:
+        os.remove(in_file)
+        os.rename(out_h264, in_file)
+        duration, _ = get_file_metadata(in_file)
+        print("Transcoding completed successfully!")
+    else:
+        print(f"Transcoding failed (code {res.returncode}), using original: {res.stderr.decode('utf-8', errors='ignore')[:200]}")
+
+    return in_file, duration
 
 def make_progress_hook(job_dir):
     def hook(d):
@@ -78,7 +159,7 @@ def make_progress_hook(job_dir):
                 pct = int((downloaded / total) * 75) + 15 # 15% to 90%
                 step = f"جاري تحميل الفيديو... {pct}% ({speed_str} - متبقي {eta_str})"
             else:
-                pct = min(85, 20 + int(downloaded / (1024 * 1024))) # rough estimate
+                pct = min(85, 20 + int(downloaded / (1024 * 1024)))
                 step = f"جاري تحميل الفيديو... ({speed_str})"
 
             update_status(
@@ -95,7 +176,7 @@ def make_progress_hook(job_dir):
                 job_dir,
                 status="processing",
                 progress=92,
-                step="اكتمل التحميل، جاري دمج وتنسيق ملف الفيديو للمحرر..."
+                step="اكتمل التحميل، جاري فحص وتنسيق ملف الفيديو للمحرر..."
             )
     return hook
 
@@ -114,17 +195,18 @@ def main():
     import yt_dlp
 
     quality = args.quality
+    # Always prioritize H.264 (avc1) video + AAC audio for HTML5 browser playback
     if quality == "1080p":
-        format_selector = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
+        format_selector = "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080][ext=mp4]/best"
     elif quality == "720p":
-        format_selector = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720][ext=mp4]/best[ext=mp4]/best"
+        format_selector = "bestvideo[height<=720][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=720][vcodec^=avc]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720][ext=mp4]/best"
     elif quality == "480p":
-        format_selector = "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480][ext=mp4]/best[ext=mp4]/best"
+        format_selector = "bestvideo[height<=480][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<=480][vcodec^=avc]+bestaudio/bestvideo[height<=480]+bestaudio/best[height<=480][ext=mp4]/best"
     elif quality == "audio":
         format_selector = "bestaudio[ext=m4a]/bestaudio/best"
     else:
-        # Default Auto: best mp4
-        format_selector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
+        # Default Auto:
+        format_selector = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc]+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
 
     out_template = os.path.join(job_dir, "output.%(ext)s")
 
@@ -148,19 +230,23 @@ def main():
             info = ydl.extract_info(args.url, download=True)
             
             title = info.get("title", "Imported_Video")
-            duration = info.get("duration", 0)
+            raw_duration = info.get("duration", 0)
             
             # Find generated output file
             expected_ext = "m4a" if quality == "audio" else "mp4"
             final_file = os.path.join(job_dir, f"output.{expected_ext}")
             
             if not os.path.exists(final_file):
-                # Search for any generated media file in job_dir
                 candidates = [f for f in os.listdir(job_dir) if f.startswith("output.") and not f.endswith(".tmp") and not f.endswith(".json")]
                 if candidates:
                     final_file = os.path.join(job_dir, candidates[0])
                 else:
                     raise Exception("تعذر العثور على ملف الفيديو بعد انتهاء التحميل.")
+
+            # Ensure H.264 web compatibility and compute exact ffprobe duration
+            final_file, exact_duration = ensure_web_compatible_h264(final_file, job_dir)
+            if not exact_duration and raw_duration:
+                exact_duration = raw_duration
 
             file_size = os.path.getsize(final_file)
             clean_title = sanitize_filename(title) or "imported_video"
@@ -180,10 +266,10 @@ def main():
                 step="اكتمل استيراد الفيديو بنجاح! جاري إرساله للمحرر...",
                 output_file=os.path.basename(final_file),
                 title=title,
-                duration=duration,
+                duration=round(exact_duration, 2),
                 file_size=file_size
             )
-            print(f"Success: {final_file}")
+            print(f"Success: {final_file} with duration={exact_duration}s")
 
     except Exception as e:
         err_str = str(e)

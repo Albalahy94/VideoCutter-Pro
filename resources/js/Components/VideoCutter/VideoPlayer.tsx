@@ -188,7 +188,9 @@ export function VideoPlayer({
   const handleVideoLoad = useCallback(() => {
     if (!videoRef.current || !file) return
     const d = videoRef.current.duration
-    if (!isNaN(d)) onFileLoad(file, d)
+    if (!isNaN(d) && d > 0) {
+      onFileLoad(file, d)
+    }
   }, [file, onFileLoad, videoRef])
 
   const handleTimeUpdate = useCallback(() => {
@@ -270,6 +272,7 @@ export function VideoPlayer({
               ref={videoRef as React.RefObject<HTMLVideoElement>}
               className="w-full h-full object-contain no-transition"
               muted={isMuted}
+              onLoadedMetadata={handleVideoLoad}
               onTimeUpdate={handleTimeUpdate}
               onEnded={onPause}
               onPlay={onPlay}

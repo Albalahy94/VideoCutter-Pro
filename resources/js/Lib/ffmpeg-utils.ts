@@ -567,9 +567,16 @@ export async function processVideo(
       if (mode === 'split') {
         for (let i = 0; i < segments.length; i++) {
           const seg = segments[i];
-          const segDuration = seg.end - seg.start;
-          const inputName = fileToFFName.get(seg.fileId)!;
           const pFile = projectFiles.find(p => p.id === seg.fileId);
+          let segDuration = seg.end - seg.start;
+          if (segDuration <= 0) {
+            if (pFile && pFile.duration > seg.start) {
+              segDuration = pFile.duration - seg.start;
+            } else {
+              throw new Error(isRtl ? `مدة المقطع ${i + 1} غير صالحة (0 ثانية). يرجى التأكد من تشغيل الفيديو واختيار مدة المقطع.` : `Invalid segment ${i + 1} duration (0s).`);
+            }
+          }
+          const inputName = fileToFFName.get(seg.fileId)!;
           const baseName = pFile?.file.name.split('.')[0] || 'video';
 
           const basePct = Math.round(20 + (i / segments.length) * 70);

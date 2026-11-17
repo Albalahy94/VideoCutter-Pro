@@ -153,6 +153,9 @@ class VideoImportController extends Controller
         putenv('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
         exec($cmd);
 
+        // Clean up old imports older than 30 mins to preserve server disk space
+        $this->cleanOldImports();
+
         return response()->json([
             'success' => true,
             'job_id' => $jobId,
@@ -254,5 +257,48 @@ class VideoImportController extends Controller
             'Cross-Origin-Resource-Policy' => 'cross-origin',
             'Accept-Ranges' => 'bytes',
         ]);
+    }
+
+    /**
+     * Delete import job directory to free server disk space immediately.
+     */
+    public function cleanupJob($jobId)
+    {
+        $jobId = basename($jobId);
+        $jobDir = storage_path('app/ai_jobs/imports/' . $jobId);
+
+        if (file_exists($jobDir)) {
+            $files = glob($jobDir . '/*');
+            foreach ($files as $file) {
+                if (is_file($file)) @unlink($file);
+            }
+            @rmdir($jobDir);
+            Log::info("Cleaned up video import job to free disk space", ['job_id' => $jobId]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Automatically purge import directories older than 30 minutes.
+     */
+    private function cleanOldImports()
+    {
+        $baseDir = storage_path('app/ai_jobs/imports');
+        if (!is_dir($baseDir)) return;
+
+        $now = time();
+        $dirs = glob($baseDir . '/*', GLOB_ONLYDIR);
+        if (!$dirs) return;
+
+        foreach ($dirs as $dir) {
+            if ($now - filemtime($dir) > 1800) {
+                $files = glob($dir . '/*');
+                foreach ($files as $file) {
+                    if (is_file($file)) @unlink($file);
+                }
+                @rmdir($dir);
+            }
+        }
     }
 }

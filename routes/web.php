@@ -44,6 +44,7 @@ Route::post('/api/video/import-info', [App\Http\Controllers\VideoImportControlle
 Route::post('/api/video/import-start', [App\Http\Controllers\VideoImportController::class, 'startDownload']);
 Route::get('/api/video/import-status/{jobId}', [App\Http\Controllers\VideoImportController::class, 'getStatus']);
 Route::get('/api/video/import-download/{jobId}', [App\Http\Controllers\VideoImportController::class, 'downloadFile']);
+Route::post('/api/video/import-cleanup/{jobId}', [App\Http\Controllers\VideoImportController::class, 'cleanupJob']);
 
 // Socialite - Google Login
 Route::get('/auth/google/redirect', [App\Http\Controllers\Auth\SocialiteController::class, 'redirect'])->name('google.redirect');
