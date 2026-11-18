@@ -410,26 +410,15 @@ export async function processVideo(
         const audioExtractName = `audio_ext_${i}_${Date.now()}.wav`;
         
         try {
-          // Extract ONLY the segments audio (not the full video) to reduce file size & server load
-          // Build a concat filter for the relevant segments of this file
+          // Determine the maximum timestamp needed for this file's segments
           const fileSegs = segments.filter(s => s.fileId === pFile.id);
-          let extractArgs: string[];
-          if (fileSegs.length > 0) {
-            // Build trim+concat for exact segments only
-            const filterParts = fileSegs.map((s, idx) => `[0:a]atrim=start=${s.start}:end=${s.end},asetpts=PTS-STARTPTS[a${idx}]`);
-            const concatInputs = fileSegs.map((_, idx) => `[a${idx}]`).join('');
-            const complexFilter = `${filterParts.join(';')};${concatInputs}concat=n=${fileSegs.length}:v=0:a=1[outa]`;
-            extractArgs = [
-              '-i', rawName,
-              '-filter_complex', complexFilter,
-              '-map', '[outa]',
-              '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2',
-              audioExtractName
-            ];
-          } else {
-            // Fallback: extract full audio if no matching segments
-            extractArgs = ['-i', rawName, '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', audioExtractName];
-          }
+          const maxEnd = fileSegs.length > 0 ? Math.max(...fileSegs.map(s => s.end)) : 0;
+          
+          // Extract 44.1kHz stereo audio up to maxEnd (or full file if maxEnd <= 0)
+          // Preserving 1:1 timeline synchronization so all segments match their exact timestamps
+          const extractArgs = (maxEnd > 0)
+            ? ['-i', rawName, '-t', maxEnd.toString(), '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', audioExtractName]
+            : ['-i', rawName, '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', audioExtractName];
 
           onProgress(isRtl ? `جاري استخراج مسار الصوت للملف ${i + 1}...` : `Extracting audio track for file ${i + 1}...`, 10);
           await ffmpeg.exec(extractArgs);
@@ -576,7 +565,6 @@ export async function processVideo(
             '-map', '1:a:0',
             '-c:a', 'aac',
             '-b:a', '192k',
-            '-shortest',
             cleanMuxedName
           ]);
 

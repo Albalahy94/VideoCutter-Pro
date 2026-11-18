@@ -333,13 +333,17 @@ class AIController extends Controller
             abort(404, 'Clean audio file not found on server');
         }
 
+        $fileSize = filesize($outputPath);
+
         // Serve directly via Nginx X-Accel-Redirect (zero-copy, kernel sendfile, non-blocking)
         return response('', 200, [
             'Content-Type' => 'audio/wav',
+            'Content-Length' => (string) $fileSize,
             'Content-Disposition' => 'attachment; filename="clean_vocals.wav"',
             'X-Accel-Redirect' => '/ai-storage-internal/' . $jobId . '/' . $outputFileName,
             'Access-Control-Allow-Origin' => '*',
-            'Cross-Origin-Resource-Policy' => 'cross-origin'
+            'Cross-Origin-Resource-Policy' => 'cross-origin',
+            'Accept-Ranges' => 'bytes'
         ]);
     }
 }
