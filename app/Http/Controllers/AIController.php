@@ -334,16 +334,17 @@ class AIController extends Controller
         }
 
         $fileSize = filesize($outputPath);
+        $mimeType = str_ends_with($outputFileName, '.m4a') ? 'audio/mp4' : 'application/octet-stream';
 
         // Serve directly via Nginx X-Accel-Redirect (zero-copy, kernel sendfile, non-blocking)
+        // CRITICAL: Use Content-Disposition: inline to prevent download managers (IDM/FDM) from hijacking internal stream
         return response('', 200, [
-            'Content-Type' => 'audio/wav',
+            'Content-Type' => $mimeType,
             'Content-Length' => (string) $fileSize,
-            'Content-Disposition' => 'attachment; filename="clean_vocals.wav"',
+            'Content-Disposition' => 'inline',
             'X-Accel-Redirect' => '/ai-storage-internal/' . $jobId . '/' . $outputFileName,
             'Access-Control-Allow-Origin' => '*',
-            'Cross-Origin-Resource-Policy' => 'cross-origin',
-            'Accept-Ranges' => 'bytes'
+            'Cross-Origin-Resource-Policy' => 'cross-origin'
         ]);
     }
 }

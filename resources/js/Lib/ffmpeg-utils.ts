@@ -517,29 +517,59 @@ export async function processVideo(
             onProgress(stepText, exportPct);
           }
 
-          // 3. Resilient Download with up to 10 retries in case of minor network jitter
+          // 3. Resilient Download via XHR (Blob mode avoids Download Manager / IDM interception & provides live bytes progress)
           let separatedAudioBlob: Blob | null = null;
-          const maxDlAttempts = 10;
+          const maxDlAttempts = 5;
+          const downloadUrl = `/api/ai/job-download/${job_id}`;
+
           for (let attempt = 1; attempt <= maxDlAttempts; attempt++) {
             try {
-              const attemptLabel = attempt > 1 
-                ? (isRtl ? `جاري استئناف استلام مسار الصوت النقي (محاولة ${attempt} من ${maxDlAttempts})...` : `Resuming vocal track download (attempt ${attempt} of ${maxDlAttempts})...`)
-                : (isRtl ? 'جاري استلام مسار الصوت النقي ودمجه مع الفيديو...' : 'Downloading clean studio vocal track...');
-              onProgress(attemptLabel, 22);
+              const attemptPrefix = attempt > 1 
+                ? (isRtl ? `[محاولة ${attempt} من ${maxDlAttempts}] ` : `[Attempt ${attempt}/${maxDlAttempts}] `)
+                : '';
 
-              const downloadResp = await fetch(`/api/ai/job-download/${job_id}`);
-              if (!downloadResp.ok) {
-                throw new Error(`HTTP ${downloadResp.status}`);
-              }
+              separatedAudioBlob = await new Promise<Blob>((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', downloadUrl, true);
+                xhr.responseType = 'blob';
+                xhr.timeout = 300000; // 5 minutes max
 
-              separatedAudioBlob = await downloadResp.blob();
+                xhr.onprogress = (evt) => {
+                  if (evt.lengthComputable && evt.total > 0) {
+                    const loadedMB = (evt.loaded / (1024 * 1024)).toFixed(1);
+                    const totalMB = (evt.total / (1024 * 1024)).toFixed(1);
+                    const pct = Math.min(99, Math.round((evt.loaded / evt.total) * 100));
+                    const progressVal = 22 + Math.round((pct / 100) * 3); // 22% -> 25%
+                    const msg = isRtl
+                      ? `${attemptPrefix}جاري استلام مسار الصوت النقي... ${pct}% (${loadedMB} / ${totalMB} ميجابايت)`
+                      : `${attemptPrefix}Downloading clean vocal track... ${pct}% (${loadedMB} / ${totalMB} MB)`;
+                    onProgress(msg, progressVal);
+                  } else {
+                    const loadedMB = (evt.loaded / (1024 * 1024)).toFixed(1);
+                    onProgress(isRtl ? `${attemptPrefix}جاري استلام مسار الصوت... (${loadedMB} ميجابايت)` : `${attemptPrefix}Downloading vocal track... (${loadedMB} MB)`, 22);
+                  }
+                };
+
+                xhr.onload = () => {
+                  if (xhr.status >= 200 && xhr.status < 300 && xhr.response && xhr.response.size > 1000) {
+                    resolve(xhr.response);
+                  } else {
+                    reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText || 'Invalid audio stream response'}`));
+                  }
+                };
+
+                xhr.onerror = () => reject(new Error('Network error during audio stream transfer'));
+                xhr.ontimeout = () => reject(new Error('Audio stream transfer timed out'));
+                xhr.send();
+              });
+
               if (separatedAudioBlob && separatedAudioBlob.size > 1000) {
                 break;
               }
             } catch (dlErr: any) {
               console.warn(`[Download Attempt ${attempt} Failed]:`, dlErr);
               if (attempt === maxDlAttempts) {
-                throw new Error(isRtl ? 'تعذر استلام مسار الصوت المعزول بعد عدة محاولات بسبب انقطاع الاتصال. يرجى التحقق من الإنترنت والمحاولة ثانية.' : `Failed to download isolated audio: ${dlErr?.message || 'Network error'}`);
+                throw new Error(isRtl ? 'تعذر استلام مسار الصوت المعزول بعد عدة محاولات بسبب انقطاع الاتصال. يرجى التحقق من سرعة الإنترنت وإعادة المحاولة.' : `Failed to download isolated audio: ${dlErr?.message || 'Network error'}`);
               }
               onProgress(isRtl ? 'تذبذب في الاتصال أثناء التنزيل، جاري إعادة المحاولة تلقائياً...' : 'Network hiccup during download, retrying automatically...', 22);
               await new Promise(r => setTimeout(r, 3000));
