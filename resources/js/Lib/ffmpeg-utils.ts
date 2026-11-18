@@ -530,7 +530,12 @@ export async function processVideo(
 
               separatedAudioBlob = await new Promise<Blob>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
-                xhr.open('GET', downloadUrl, true);
+                // CRITICAL: Use POST to download the audio stream.
+                // Download managers (like IDM / Internet Download Manager) only intercept GET requests.
+                // Using POST guarantees IDM and browser extensions will completely ignore the stream,
+                // allowing the browser JavaScript to receive the binary audio blob without socket disconnection.
+                xhr.open('POST', downloadUrl, true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
                 xhr.responseType = 'blob';
                 xhr.timeout = 300000; // 5 minutes max
 
@@ -560,7 +565,7 @@ export async function processVideo(
 
                 xhr.onerror = () => reject(new Error('Network error during audio stream transfer'));
                 xhr.ontimeout = () => reject(new Error('Audio stream transfer timed out'));
-                xhr.send();
+                xhr.send(JSON.stringify({ request: 'stream' }));
               });
 
               if (separatedAudioBlob && separatedAudioBlob.size > 1000) {

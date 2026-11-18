@@ -37,7 +37,7 @@ Route::post('/api/ai/analyze', [App\Http\Controllers\AIController::class, 'analy
 Route::post('/api/ai/separate-audio', [App\Http\Controllers\AIController::class, 'separateAudio']);
 Route::post('/api/ai/separate-audio-async', [App\Http\Controllers\AIController::class, 'startAsyncSeparation']);
 Route::get('/api/ai/job-status/{jobId}', [App\Http\Controllers\AIController::class, 'getJobStatus']);
-Route::get('/api/ai/job-download/{jobId}', [App\Http\Controllers\AIController::class, 'downloadJobOutput']);
+Route::match(['get', 'post'], '/api/ai/job-download/{jobId}', [App\Http\Controllers\AIController::class, 'downloadJobOutput']);
 
 // Video URL Import (YouTube, TikTok, Facebook, Instagram, Twitter/X, etc.)
 Route::post('/api/video/import-info', [App\Http\Controllers\VideoImportController::class, 'fetchInfo']);

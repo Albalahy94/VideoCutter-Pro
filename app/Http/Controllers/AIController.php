@@ -339,11 +339,13 @@ class AIController extends Controller
         $mimeType = str_ends_with($outputFileName, '.m4a') ? 'audio/mp4' : 'application/octet-stream';
 
         // Serve directly via Nginx X-Accel-Redirect (zero-copy, kernel sendfile, non-blocking)
-        // CRITICAL: Use Content-Disposition: inline to prevent download managers (IDM/FDM) from hijacking internal stream
+        // CRITICAL: Use Content-Disposition: inline and POST support to prevent download managers (IDM/FDM) from hijacking stream
         return response('', 200, [
             'Content-Type' => $mimeType,
             'Content-Length' => (string) $fileSize,
             'Content-Disposition' => 'inline',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            'X-Content-Type-Options' => 'nosniff',
             'X-Accel-Redirect' => '/ai-storage-internal/' . $jobId . '/' . $outputFileName,
             'Access-Control-Allow-Origin' => '*',
             'Cross-Origin-Resource-Policy' => 'cross-origin'
