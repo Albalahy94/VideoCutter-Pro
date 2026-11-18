@@ -21,6 +21,27 @@
 
 ---
 
+#### 🔒 إصلاح أمني: إزالة مفتاح Google API Key المكشوف من الكود المصدري
+**التاريخ:** 2026-11-18
+
+**المشكلة التي ظهرت (تنبيه GitGuardian):**
+- تنبيه أمني من GitGuardian بوجود مفتاح Google API Key في المستودع:
+  `[Albalahy94/VideoCutter-Pro] Google API Key exposed on GitHub`
+
+**السبب:**
+- كان الملف `resources/js/Lib/google-drive-v2.ts` يحتوي على المفتاح مكتوباً كنص صريح (Hardcoded):
+  `const DEVELOPER_KEY = 'AIzaSyBsdfVtJfbxecu619_D0zjzKrrHDpi7UEQ';`
+
+**الإجراءات الفنية المنفذة فوراً:**
+1. استبدال المفتاح في `google-drive-v2.ts` ليتم قراءته من المتغيرات البيئية:
+   `const DEVELOPER_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_DEVELOPER_KEY || '';`
+2. إضافة المفتاح داخل ملفات البيئة المحمية `.env` (المستثناة من Git عبر `.gitignore`) على الجهاز المحلي والسيرفر.
+3. تحديث `.env.example` لتوثيق المتغير دون قيم سرية.
+4. إعادة بناء الأصول `npm run build` ورفعها إلى السيرفر وتفريغ الكاش.
+5. عمل `git commit` ودفع التعديل إلى GitHub.
+
+---
+
 #### ✅ حل مشكلة الشاشة السوداء في المحرر (404 Missing JS Chunks)
 **التاريخ:** 2026-11-18
 
