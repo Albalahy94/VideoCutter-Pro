@@ -580,7 +580,9 @@ export async function processVideo(
             throw new Error(isRtl ? 'ملف الصوت المعزول فارغ أو تعذر تحميله.' : 'Isolated audio file is empty.');
           }
 
-          const cleanStemName = `stem_clean_${i}_${Date.now()}.wav`;
+          const isM4a = separatedAudioBlob.type.includes('mp4') || separatedAudioBlob.type.includes('m4a');
+          const ext = isM4a ? 'm4a' : 'wav';
+          const cleanStemName = `stem_clean_${i}_${Date.now()}.${ext}`;
           await ffmpeg.writeFile(cleanStemName, await fetchFile(separatedAudioBlob));
           activeFFFiles.push(cleanStemName);
 

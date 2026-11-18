@@ -292,10 +292,12 @@ class AIController extends Controller
             $pid = $data['pid'] ?? null;
             if ($pid && !file_exists("/proc/{$pid}")) {
                 // If it died, check if clean_vocals was already generated
-                if (file_exists($jobDir . '/clean_vocals.wav')) {
+                $wavExists = file_exists($jobDir . '/clean_vocals.wav');
+                $m4aExists = file_exists($jobDir . '/clean_vocals.m4a');
+                if ($m4aExists || $wavExists) {
                     $data['status'] = 'completed';
                     $data['progress'] = 100;
-                    $data['output_file'] = 'clean_vocals.wav';
+                    $data['output_file'] = $m4aExists ? 'clean_vocals.m4a' : 'clean_vocals.wav';
                     $data['step'] = 'اكتمل عزل الصوت ومسح الموسيقى والدف بنجاح!';
                 } else {
                     $data['status'] = 'failed';
