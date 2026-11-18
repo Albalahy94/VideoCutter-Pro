@@ -385,6 +385,19 @@ export async function processVideo(
 
     // AI Audio Separation Engine (Async Background Queue + MDX-Net & Acoustic De-percussion)
     if (vocalIsolation === 'remove_music') {
+      // ===== GUARD: Check total segments duration before AI separation =====
+      const totalSegsDuration = segments.reduce((sum, seg) => sum + Math.max(0, seg.end - seg.start), 0);
+      const MAX_AI_DURATION_SECONDS = 15 * 60; // 15 minutes max for AI separation
+      if (totalSegsDuration > MAX_AI_DURATION_SECONDS) {
+        const totalMin = Math.round(totalSegsDuration / 60);
+        throw new Error(
+          isRtl
+            ? `مجموع مدة المقاطع (${totalMin} دقيقة) يتجاوز الحد المسموح به لعزل الصوت بالذكاء الاصطناعي (15 دقيقة كحد أقصى). يرجى تقليل عدد المقاطع أو تقصير مدتها، أو إيقاف تأثير "إزالة الموسيقى" لفيديوهات بهذا الحجم.`
+            : `Total segments duration (${totalMin} min) exceeds the AI vocal isolation limit (max 15 min). Please reduce segments or disable "Remove Music" for long videos.`
+        );
+      }
+      // =====================================================================
+
       const labelMsg = isRtl 
         ? 'جاري تجهيز مسار الصوت ونزع الموسيقى والدفوف والطبول 100%...' 
         : 'Preparing audio & eliminating all music, duff & drums 100% via AI...';
@@ -397,9 +410,29 @@ export async function processVideo(
         const audioExtractName = `audio_ext_${i}_${Date.now()}.wav`;
         
         try {
-          // Extract 44.1kHz stereo audio
+          // Extract ONLY the segments audio (not the full video) to reduce file size & server load
+          // Build a concat filter for the relevant segments of this file
+          const fileSegs = segments.filter(s => s.fileId === pFile.id);
+          let extractArgs: string[];
+          if (fileSegs.length > 0) {
+            // Build trim+concat for exact segments only
+            const filterParts = fileSegs.map((s, idx) => `[0:a]atrim=start=${s.start}:end=${s.end},asetpts=PTS-STARTPTS[a${idx}]`);
+            const concatInputs = fileSegs.map((_, idx) => `[a${idx}]`).join('');
+            const complexFilter = `${filterParts.join(';')};${concatInputs}concat=n=${fileSegs.length}:v=0:a=1[outa]`;
+            extractArgs = [
+              '-i', rawName,
+              '-filter_complex', complexFilter,
+              '-map', '[outa]',
+              '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2',
+              audioExtractName
+            ];
+          } else {
+            // Fallback: extract full audio if no matching segments
+            extractArgs = ['-i', rawName, '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', audioExtractName];
+          }
+
           onProgress(isRtl ? `جاري استخراج مسار الصوت للملف ${i + 1}...` : `Extracting audio track for file ${i + 1}...`, 10);
-          await ffmpeg.exec(['-i', rawName, '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', audioExtractName]);
+          await ffmpeg.exec(extractArgs);
           const rawAudioData = await ffmpeg.readFile(audioExtractName);
           const audioBlob = new Blob([rawAudioData], { type: 'audio/wav' });
           await ffmpeg.deleteFile(audioExtractName).catch(() => {});
