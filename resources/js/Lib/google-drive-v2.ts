@@ -2,8 +2,8 @@
  * Advanced Google Drive Integration Service (COEP-Compatible)
  */
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-const DEVELOPER_KEY = 'AIzaSyBsdfVtJfbxecu619_D0zjzKrrHDpi7UEQ'; 
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const DEVELOPER_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_DEVELOPER_KEY || ''; 
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
 
 let tokenClient: any = null;
