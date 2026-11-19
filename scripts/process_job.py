@@ -83,6 +83,39 @@ def run_separator(input_path, output_dir, model_dir, model_filename, stem_hint="
     return vocals_file
 
 
+def apply_afftdn_denoiser(in_wav, out_wav, nr=12, nf=-30):
+    """
+    FFT-based speech denoiser (afftdn) — removes residual music/noise that bleeds
+    through AI separation and sits ON TOP of speech during vocal delivery.
+
+    Parameters:
+      nr  = noise reduction in dB (12 = gentle, preserves vocal warmth, reduces bleed).
+            Going above 20dB starts to damage voice timbre.
+      nf  = noise floor in dBFS (-30 = only suppress sounds below this threshold).
+            Prevents over-suppression of low-voiced syllables.
+
+    This is specifically effective against:
+      - Thin high-frequency music shimmer on top of vowels
+      - Reverb tails mixed into the vocal signal
+      - Faint melodic lines underneath spoken words
+    """
+    af_chain = (
+        f"afftdn=nr={nr}:nf={nf}:nt=w"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", in_wav,
+        "-af", af_chain,
+        "-c:a", "pcm_s16le",
+        "-ar", "44100",
+        out_wav
+    ]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if res.returncode != 0:
+        print(f"[afftdn] Warning: filter failed (rc={res.returncode}), copying input.")
+        shutil.copyfile(in_wav, out_wav)
+
+
 def apply_highpass_filter(in_wav, out_wav, freq=135):
     """
     Strips sub-bass / low-frequency percussion resonance below `freq` Hz.
@@ -145,7 +178,7 @@ def main():
         # Best-in-class for melody / instrument removal in pop & Arabic music.
         # Very fast (~2 min for 1 hr audio) and uses only ~500MB RAM.
         # ─────────────────────────────────────────────────────────────────
-        update_status(job_dir, "processing", 10, step="[1/3] جاري تشغيل نموذج MDX لإزالة الموسيقى والآلات...")
+        update_status(job_dir, "processing", 10, step="[1/4] جاري تشغيل نموذج MDX لإزالة الموسيقى والآلات...")
         print("[Pass 1] Running UVR-MDX-NET-Inst_HQ_3 ...")
 
         vocals_pass1 = run_separator(
@@ -168,7 +201,7 @@ def main():
         # Catches leftover percussion, duff, tabla, rhythmic beats, and
         # any residual background music the MDX model missed.
         # ─────────────────────────────────────────────────────────────────
-        update_status(job_dir, "processing", 45, step="[2/3] جاري تشغيل نموذج Demucs لإزالة الإيقاعات المتبقية...")
+        update_status(job_dir, "processing", 45, step="[2/4] جاري تشغيل نموذج Demucs لإزالة الإيقاعات المتبقية...")
         print("[Pass 2] Running htdemucs_ft on Pass-1 vocals ...")
 
         demucs_kwargs = {
@@ -198,29 +231,42 @@ def main():
         print(f"[Pass 2] Clean vocals: {vocals_pass2} ({os.path.getsize(vocals_pass2):,} bytes)")
 
         # ─────────────────────────────────────────────────────────────────
-        # PASS 3 — FFmpeg high-pass filter @ 135 Hz
+        # PASS 3 — FFmpeg afftdn (FFT Speech Denoiser)
+        # Removes residual music shimmer / bleed that sits ON TOP of speech
+        # (the subtle music trace you still hear during vocal delivery).
+        # nr=12dB is a conservative setting that reduces bleed without
+        # damaging the warmth or naturalness of the voice.
+        # ─────────────────────────────────────────────────────────────────
+        update_status(job_dir, "processing", 78, step="[3/4] جاري مسح بقايا الموسيقى أثناء الكلام...")
+        print("[Pass 3] Applying afftdn speech denoiser (nr=12, nf=-30) ...")
+
+        denoised_wav = os.path.join(job_dir, "clean_vocals_denoised.wav")
+        apply_afftdn_denoiser(vocals_pass2, denoised_wav, nr=12, nf=-30)
+
+        # ─────────────────────────────────────────────────────────────────
+        # PASS 4 — FFmpeg high-pass filter @ 135 Hz
         # Removes any residual low-frequency rumble, duff resonance,
         # sub-bass thump, or reverb tail below 135Hz.
         # Human speech sits at 85–8000Hz, so 135Hz cut is completely safe.
         # ─────────────────────────────────────────────────────────────────
-        update_status(job_dir, "processing", 82, step="[3/3] جاري تنقية الترددات المنخفضة المتبقية...")
-        print("[Pass 3] Applying high-pass 135Hz filter ...")
+        update_status(job_dir, "processing", 86, step="[4/4] جاري تنقية الترددات المنخفضة المتبقية...")
+        print("[Pass 4] Applying high-pass 135Hz filter ...")
 
         filtered_wav = os.path.join(job_dir, "clean_vocals_filtered.wav")
-        apply_highpass_filter(vocals_pass2, filtered_wav, freq=135)
+        apply_highpass_filter(denoised_wav, filtered_wav, freq=135)
 
         # ─────────────────────────────────────────────────────────────────
         # COMPRESS → M4A
         # ~10x smaller than WAV, transparent quality, fast browser download.
         # ─────────────────────────────────────────────────────────────────
-        update_status(job_dir, "processing", 92, step="جاري ضغط الصوت لتسريع التنزيل...")
+        update_status(job_dir, "processing", 93, step="جاري ضغط الصوت لتسريع التنزيل...")
         print("[Compress] WAV → M4A 192k ...")
 
         final_m4a = os.path.join(job_dir, "clean_vocals.m4a")
         if compress_to_m4a(filtered_wav, final_m4a):
             print(f"[Compress] M4A: {os.path.getsize(final_m4a):,} bytes")
             # Clean up intermediate WAV files to save disk space
-            for tmp in [filtered_wav]:
+            for tmp in [denoised_wav, filtered_wav]:
                 try:
                     os.remove(tmp)
                 except Exception:
