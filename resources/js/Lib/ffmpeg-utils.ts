@@ -572,11 +572,12 @@ export async function processVideo(
                 break;
               }
             } catch (dlErr: any) {
+              const errDetail = dlErr?.message || 'Network error';
               console.warn(`[Download Attempt ${attempt} Failed]:`, dlErr);
               if (attempt === maxDlAttempts) {
-                throw new Error(isRtl ? 'تعذر استلام مسار الصوت المعزول بعد عدة محاولات بسبب انقطاع الاتصال. يرجى التحقق من سرعة الإنترنت وإعادة المحاولة.' : `Failed to download isolated audio: ${dlErr?.message || 'Network error'}`);
+                throw new Error(isRtl ? `تعذر استلام مسار الصوت المعزول (${errDetail}). يرجى التحقق من سرعة الإنترنت وإعادة المحاولة.` : `Failed to download isolated audio (${errDetail}). Please check connection and retry.`);
               }
-              onProgress(isRtl ? 'تذبذب في الاتصال أثناء التنزيل، جاري إعادة المحاولة تلقائياً...' : 'Network hiccup during download, retrying automatically...', 22);
+              onProgress(isRtl ? `تذبذب في الاتصال أثناء التنزيل (${errDetail})، جاري إعادة المحاولة تلقائياً [${attempt}/${maxDlAttempts}]...` : `Network hiccup during download (${errDetail}), retrying [${attempt}/${maxDlAttempts}]...`, 22);
               await new Promise(r => setTimeout(r, 3000));
             }
           }
