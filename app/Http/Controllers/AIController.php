@@ -312,6 +312,8 @@ class AIController extends Controller
 
     /**
      * Download completed clean stem for an async AI job.
+     * Uses direct PHP streaming (no X-Accel-Redirect) to avoid HTTP/2 RST_STREAM issues
+     * that occur when Nginx internally redirects large files via X-Accel-Redirect under HTTP/2.
      */
     public function downloadJobOutput($jobId)
     {
@@ -338,17 +340,35 @@ class AIController extends Controller
         $fileSize = filesize($outputPath);
         $mimeType = str_ends_with($outputFileName, '.m4a') ? 'audio/mp4' : 'application/octet-stream';
 
-        // Serve directly via Nginx X-Accel-Redirect (zero-copy, kernel sendfile, non-blocking)
-        // CRITICAL: Use Content-Disposition: inline and POST support to prevent download managers (IDM/FDM) from hijacking stream
-        return response('', 200, [
-            'Content-Type' => $mimeType,
-            'Content-Length' => (string) $fileSize,
-            'Content-Disposition' => 'inline',
-            'Cache-Control' => 'no-store, no-cache, must-revalidate',
-            'X-Content-Type-Options' => 'nosniff',
-            'X-Accel-Redirect' => '/ai-storage-internal/' . $jobId . '/' . $outputFileName,
-            'Access-Control-Allow-Origin' => '*',
-            'Cross-Origin-Resource-Policy' => 'cross-origin'
+        // Direct PHP streaming — bypasses X-Accel-Redirect / Nginx internal redirect entirely.
+        // This avoids the HTTP/2 RST_STREAM issue where Nginx resets the stream mid-transfer
+        // when serving large files via internal redirect under HTTP/2 multiplexing.
+        // PHP reads the file in 256KB chunks and flushes them directly to the client.
+        return response()->stream(function () use ($outputPath) {
+            // Disable any output buffering layers
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            set_time_limit(300);
+            $handle = fopen($outputPath, 'rb');
+            if ($handle === false) {
+                return;
+            }
+            while (!feof($handle)) {
+                $chunk = fread($handle, 262144); // 256KB chunks
+                if ($chunk === false) break;
+                echo $chunk;
+                flush();
+            }
+            fclose($handle);
+        }, 200, [
+            'Content-Type'                  => $mimeType,
+            'Content-Length'                => (string) $fileSize,
+            'Content-Disposition'           => 'inline',
+            'Cache-Control'                 => 'no-store, no-cache, must-revalidate',
+            'X-Content-Type-Options'        => 'nosniff',
+            'Access-Control-Allow-Origin'   => '*',
+            'Cross-Origin-Resource-Policy'  => 'cross-origin',
         ]);
     }
 }

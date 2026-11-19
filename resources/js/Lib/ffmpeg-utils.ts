@@ -517,7 +517,12 @@ export async function processVideo(
             onProgress(stepText, exportPct);
           }
 
-          // 3. Resilient Download via XHR (Blob mode avoids Download Manager / IDM interception & provides live bytes progress)
+          // 3. Resilient Download via Fetch + ReadableStream
+          // Switched from XHR to Fetch API to avoid HTTP/2 RST_STREAM issues.
+          // XHR onerror fires when the HTTP/2 stream is reset mid-transfer, even if
+          // the server sent HTTP 200. Fetch ReadableStream is more resilient and allows
+          // reading chunks incrementally without the XHR abort problem.
+          // POST is used to bypass IDM/download managers that only intercept GET requests.
           let separatedAudioBlob: Blob | null = null;
           const maxDlAttempts = 5;
           const downloadUrl = `/api/ai/job-download/${job_id}`;
@@ -528,45 +533,80 @@ export async function processVideo(
                 ? (isRtl ? `[محاولة ${attempt} من ${maxDlAttempts}] ` : `[Attempt ${attempt}/${maxDlAttempts}] `)
                 : '';
 
-              separatedAudioBlob = await new Promise<Blob>((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                // CRITICAL: Use POST to download the audio stream.
-                // Download managers (like IDM / Internet Download Manager) only intercept GET requests.
-                // Using POST guarantees IDM and browser extensions will completely ignore the stream,
-                // allowing the browser JavaScript to receive the binary audio blob without socket disconnection.
-                xhr.open('POST', downloadUrl, true);
-                xhr.setRequestHeader('Content-Type', 'application/json');
-                xhr.responseType = 'blob';
-                xhr.timeout = 300000; // 5 minutes max
+              separatedAudioBlob = await (async (): Promise<Blob> => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
 
-                xhr.onprogress = (evt) => {
-                  if (evt.lengthComputable && evt.total > 0) {
-                    const loadedMB = (evt.loaded / (1024 * 1024)).toFixed(1);
-                    const totalMB = (evt.total / (1024 * 1024)).toFixed(1);
-                    const pct = Math.min(99, Math.round((evt.loaded / evt.total) * 100));
-                    const progressVal = 22 + Math.round((pct / 100) * 3); // 22% -> 25%
-                    const msg = isRtl
-                      ? `${attemptPrefix}جاري استلام مسار الصوت النقي... ${pct}% (${loadedMB} / ${totalMB} ميجابايت)`
-                      : `${attemptPrefix}Downloading clean vocal track... ${pct}% (${loadedMB} / ${totalMB} MB)`;
-                    onProgress(msg, progressVal);
-                  } else {
-                    const loadedMB = (evt.loaded / (1024 * 1024)).toFixed(1);
-                    onProgress(isRtl ? `${attemptPrefix}جاري استلام مسار الصوت... (${loadedMB} ميجابايت)` : `${attemptPrefix}Downloading vocal track... (${loadedMB} MB)`, 22);
+                let response: Response;
+                try {
+                  response = await fetch(downloadUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request: 'stream' }),
+                    signal: controller.signal,
+                  });
+                } catch (fetchErr: any) {
+                  clearTimeout(timeoutId);
+                  if (fetchErr?.name === 'AbortError') {
+                    throw new Error('Audio stream transfer timed out');
                   }
-                };
+                  throw new Error(`Network error during audio stream transfer: ${fetchErr?.message || ''}`);
+                }
 
-                xhr.onload = () => {
-                  if (xhr.status >= 200 && xhr.status < 300 && xhr.response && xhr.response.size > 1000) {
-                    resolve(xhr.response);
-                  } else {
-                    reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText || 'Invalid audio stream response'}`));
+                if (!response.ok) {
+                  clearTimeout(timeoutId);
+                  throw new Error(`HTTP ${response.status}: ${response.statusText || 'Invalid audio stream response'}`);
+                }
+
+                // Read the response body as a ReadableStream for real-time progress
+                const contentLength = response.headers.get('Content-Length');
+                const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+                const reader = response.body?.getReader();
+
+                if (!reader) {
+                  clearTimeout(timeoutId);
+                  // Fallback: read entire blob at once if streaming not supported
+                  const blob = await response.blob();
+                  return blob;
+                }
+
+                const chunks: Uint8Array[] = [];
+                let loadedBytes = 0;
+
+                try {
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    loadedBytes += value.byteLength;
+
+                    // Progress update
+                    if (totalBytes > 0) {
+                      const loadedMB = (loadedBytes / (1024 * 1024)).toFixed(1);
+                      const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+                      const pct = Math.min(99, Math.round((loadedBytes / totalBytes) * 100));
+                      const progressVal = 22 + Math.round((pct / 100) * 3);
+                      const msg = isRtl
+                        ? `${attemptPrefix}جاري استلام مسار الصوت النقي... ${pct}% (${loadedMB} / ${totalMB} ميجابايت)`
+                        : `${attemptPrefix}Downloading clean vocal track... ${pct}% (${loadedMB} / ${totalMB} MB)`;
+                      onProgress(msg, progressVal);
+                    } else {
+                      const loadedMB = (loadedBytes / (1024 * 1024)).toFixed(1);
+                      onProgress(
+                        isRtl ? `${attemptPrefix}جاري استلام مسار الصوت... (${loadedMB} ميجابايت)` : `${attemptPrefix}Downloading vocal track... (${loadedMB} MB)`,
+                        22
+                      );
+                    }
                   }
-                };
+                } finally {
+                  clearTimeout(timeoutId);
+                  reader.releaseLock();
+                }
 
-                xhr.onerror = () => reject(new Error('Network error during audio stream transfer'));
-                xhr.ontimeout = () => reject(new Error('Audio stream transfer timed out'));
-                xhr.send(JSON.stringify({ request: 'stream' }));
-              });
+                // Reassemble chunks into a single Blob
+                const contentType = response.headers.get('Content-Type') || 'application/octet-stream';
+                return new Blob(chunks, { type: contentType });
+              })();
 
               if (separatedAudioBlob && separatedAudioBlob.size > 1000) {
                 break;
