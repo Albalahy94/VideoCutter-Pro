@@ -83,24 +83,20 @@ def run_separator(input_path, output_dir, model_dir, model_filename, stem_hint="
     return vocals_file
 
 
-def apply_afftdn_denoiser(in_wav, out_wav, nr=12, nf=-30):
+def apply_afftdn_denoiser(in_wav, out_wav, nr=20, nf=-35, tn=1, tr=1, ad=0.7):
     """
     FFT-based speech denoiser (afftdn) — removes residual music/noise that bleeds
     through AI separation and sits ON TOP of speech during vocal delivery.
 
     Parameters:
-      nr  = noise reduction in dB (12 = gentle, preserves vocal warmth, reduces bleed).
-            Going above 20dB starts to damage voice timbre.
-      nf  = noise floor in dBFS (-30 = only suppress sounds below this threshold).
-            Prevents over-suppression of low-voiced syllables.
-
-    This is specifically effective against:
-      - Thin high-frequency music shimmer on top of vowels
-      - Reverb tails mixed into the vocal signal
-      - Faint melodic lines underneath spoken words
+      nr  = noise reduction in dB (20dB provides aggressive suppression of music shimmer).
+      nf  = noise floor in dBFS (-35dB threshold for voice preservation).
+      tn  = track_noise (1 = dynamic spectral tracking of shifting music harmonics).
+      tr  = track_residual (1 = tracks residual energy across bands).
+      ad  = adaptivity (0.7 = fast adaptation to musical chord changes).
     """
     af_chain = (
-        f"afftdn=nr={nr}:nf={nf}:nt=w"
+        f"afftdn=nr={nr}:nf={nf}:tn={tn}:tr={tr}:ad={ad}"
     )
     cmd = [
         "ffmpeg", "-y",
@@ -174,23 +170,24 @@ def main():
 
     try:
         # ─────────────────────────────────────────────────────────────────
-        # PASS 1 — UVR-MDX-NET-Inst_HQ_3
-        # Best-in-class for melody / instrument removal in pop & Arabic music.
-        # Very fast (~2 min for 1 hr audio) and uses only ~500MB RAM.
+        # PASS 1 — Kim_Vocal_2 (preferred for zero-bleed vocals) or UVR-MDX-NET-Inst_HQ_3
+        # Kim_Vocal_2 directly targets vocal formants and suppresses instrumentals without ghost harmonics.
+        # Falls back gracefully to Inst_HQ_3 if Kim_Vocal_2 is not found.
         # ─────────────────────────────────────────────────────────────────
-        update_status(job_dir, "processing", 10, step="[1/4] جاري تشغيل نموذج MDX لإزالة الموسيقى والآلات...")
-        print("[Pass 1] Running UVR-MDX-NET-Inst_HQ_3 ...")
+        pass1_model = "Kim_Vocal_2.onnx" if os.path.exists(os.path.join(model_dir, "Kim_Vocal_2.onnx")) else "UVR-MDX-NET-Inst_HQ_3.onnx"
+        update_status(job_dir, "processing", 10, step="[1/4] جاري تشغيل نموذج العزل الصوتي فائق الدقة...")
+        print(f"[Pass 1] Running {pass1_model} ...")
 
         vocals_pass1 = run_separator(
             input_path=input_path,
             output_dir=output_dir_1,
             model_dir=model_dir,
-            model_filename="UVR-MDX-NET-Inst_HQ_3.onnx",
+            model_filename=pass1_model,
             stem_hint="vocals",
         )
 
         if not vocals_pass1 or not os.path.exists(vocals_pass1):
-            update_status(job_dir, "failed", 0, error="فشل نموذج MDX في إنتاج مسار صوتي.")
+            update_status(job_dir, "failed", 0, error="فشل نموذج العزل في إنتاج مسار صوتي.")
             sys.exit(1)
 
         print(f"[Pass 1] Vocals: {vocals_pass1} ({os.path.getsize(vocals_pass1):,} bytes)")
@@ -231,17 +228,16 @@ def main():
         print(f"[Pass 2] Clean vocals: {vocals_pass2} ({os.path.getsize(vocals_pass2):,} bytes)")
 
         # ─────────────────────────────────────────────────────────────────
-        # PASS 3 — FFmpeg afftdn (FFT Speech Denoiser)
+        # PASS 3 — FFmpeg afftdn (Dynamic FFT Speech Denoiser)
         # Removes residual music shimmer / bleed that sits ON TOP of speech
-        # (the subtle music trace you still hear during vocal delivery).
-        # nr=12dB is a conservative setting that reduces bleed without
-        # damaging the warmth or naturalness of the voice.
+        # (the subtle music trace during vocal delivery).
+        # Uses dynamic spectral tracking (tn=1, tr=1) and 20dB reduction.
         # ─────────────────────────────────────────────────────────────────
         update_status(job_dir, "processing", 78, step="[3/4] جاري مسح بقايا الموسيقى أثناء الكلام...")
-        print("[Pass 3] Applying afftdn speech denoiser (nr=12, nf=-30) ...")
+        print("[Pass 3] Applying tuned afftdn speech denoiser (nr=20, nf=-35, tn=1) ...")
 
         denoised_wav = os.path.join(job_dir, "clean_vocals_denoised.wav")
-        apply_afftdn_denoiser(vocals_pass2, denoised_wav, nr=12, nf=-30)
+        apply_afftdn_denoiser(vocals_pass2, denoised_wav, nr=20, nf=-35, tn=1, tr=1, ad=0.7)
 
         # ─────────────────────────────────────────────────────────────────
         # PASS 4 — FFmpeg high-pass filter @ 135 Hz
