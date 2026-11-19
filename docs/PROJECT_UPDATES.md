@@ -6,6 +6,61 @@
 
 ---
 
+## ✅ [2026-11-19] إصلاح قطع التحميل في إزالة الموسيقى (HTTP/2 RST_STREAM Fix)
+
+### المشكلة
+فشل تحميل ملف الصوت المعزول (`clean_vocals.m4a` حجم ~11MB) عند 22% مع رسالة "Network error during audio stream transfer". كانت الـ XHR تستلم البيانات جزئياً (229K → 344K → 409K في كل محاولة) لكن تُقطع قبل اكتمال التحميل.
+
+### السبب الجذري
+1. **HTTP/2 RST_STREAM**: الـ Nginx كان يرسل X-Accel-Redirect داخلياً لملفات M4A كبيرة عبر HTTP/2، مما يتسبب في إعادة تعيين الاتصال (RST_STREAM) قبل اكتمال نقل البيانات، وهذا يُطلق `onerror` في الـ XHR رغم أن الخادم أرسل HTTP 200.
+2. **XHR + HTTP/2 incompatibility**: الـ XHR يفشل فشلاً صامتاً مع HTTP/2 stream resets بينما Fetch API يتعامل معها بشكل أفضل.
+
+### الإصلاح المُطبّق
+
+**1. `app/Http/Controllers/AIController.php`** — استبدال `X-Accel-Redirect` بـ direct PHP streaming:
+```php
+// قبل: Nginx internal redirect (سبب المشكلة)
+return response('', 200, ['X-Accel-Redirect' => '/ai-storage-internal/...']);
+
+// بعد: PHP direct streaming في chunks بحجم 256KB
+return response()->stream(function () use ($outputPath) {
+    while (ob_get_level() > 0) ob_end_clean();
+    set_time_limit(300);
+    $handle = fopen($outputPath, 'rb');
+    while (!feof($handle)) {
+        echo fread($handle, 262144); // 256KB
+        flush();
+    }
+    fclose($handle);
+}, 200, [...headers...]);
+```
+
+**2. `resources/js/Lib/ffmpeg-utils.ts`** — استبدال XHR بـ Fetch API + ReadableStream:
+```typescript
+// قبل: XHR blob (يفشل مع HTTP/2 RST_STREAM)
+const xhr = new XMLHttpRequest();
+xhr.open('POST', downloadUrl);
+xhr.onerror = () => reject('Network error');
+
+// بعد: Fetch + ReadableStream (مقاوم لـ HTTP/2 resets)
+const response = await fetch(downloadUrl, { method: 'POST', ... });
+const reader = response.body.getReader();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  // تجميع الـ chunks + تحديث شريط التقدم
+}
+return new Blob(chunks, { type: contentType });
+```
+
+### النتيجة
+- **Git commit**: `5ab1998`
+- **Build**: `Editor-BCXJZVUW.js` (299KB), `app-CrQLDoGq.js` (342KB)
+- الملف يُنقل الآن مباشرة من PHP دون تدخل Nginx
+- Fetch API أكثر موثوقية مع HTTP/2 multiplexing
+
+---
+
 ## 📌 سياسة التوثيق المعتمدة للمشروع
 > [!IMPORTANT]
 > **قاعدة عمل دائمة**: عند تنفيذ أي ميزة، تعديل، أو إصلاح لأي مشكلة في المشروع، يجب تسجيل وتثبيت التحديث هنا فوراً متضمناً:
